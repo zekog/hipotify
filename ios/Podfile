@@ -1,32 +1,10 @@
-# Uncomment this line to define a global platform for your project
+# The next line is used by the Flutter tool to generate the Podfile.
 platform :ios, '13.0'
 
 # CocoaPods analytics sends network stats synchronously affecting build performance.
 ENV['COCOAPODS_DISABLE_STATS'] = '1'
 
-project 'Runner', {
-  'Debug' => :debug,
-  'Release' => :release,
-  'Profile' => :profile,
-}
-
-def flutter_install_all_ios_pods(ios_application_path = nil)
-  native_additions_path = File.join(ios_application_path, 'Flutter', 'flutter_export_environment.sh')
-  return unless File.exist?(native_additions_path)
-
-  File.foreach(native_additions_path) do |line|
-    matches = line.match(/\s*export\s+"?([^=" ]+)"?="?([^"]+)"?\s*$/)
-    if matches
-      case matches[1]
-      when 'FLUTTER_FRAMEWORK_DIR'
-        path = File.expand_path(matches[2])
-        symlink_path = File.join(ios_application_path, 'Flutter', 'Flutter.framework')
-        FileUtils.rm_rf(symlink_path)
-        FileUtils.ln_s(path, symlink_path)
-      end
-    end
-  end
-end
+load File.join(File.dirname(File.realpath(__FILE__)), 'Flutter', 'podhelper.rb')
 
 target 'Runner' do
   use_frameworks!
