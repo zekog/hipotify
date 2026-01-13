@@ -181,8 +181,9 @@ class DownloadService {
           year: int.tryParse(track.releaseDate?.split('-').first ?? ''),
           pictures: coverPath != null ? [
             at.Picture(
-              path: coverPath,
-              type: at.PictureType.frontCover,
+              bytes: await File(coverPath).readAsBytes(),
+              mimeType: at.MimeType.jpeg,
+              pictureType: at.PictureType.coverFront,
             )
           ] : [],
         );
