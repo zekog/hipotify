@@ -1,0 +1,32 @@
+name: iOS Build
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build:
+    name: Build iOS App
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          architecture: x64
+          
+      - name: Install Dependencies
+        run: flutter pub get
+        
+      - name: Build iOS
+        run: flutter build ios --release --no-codesign
+        
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: ios-build
+          path: build/ios/iphoneos/Runner.app
