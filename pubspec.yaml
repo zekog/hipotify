@@ -1,0 +1,34 @@
+name: hipotify
+description: A Spotify Clone for Android.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  provider: ^6.0.5
+  just_audio: ^0.9.35
+  just_audio_background: ^0.0.1-beta.13
+  hive: ^2.2.3
+  hive_flutter: ^1.1.0
+  http: ^1.1.0
+  dio: ^5.3.3
+  permission_handler: ^11.0.1
+  path_provider: ^2.1.1
+  cached_network_image: ^3.3.0
+  archive: ^3.3.7
+  google_fonts: ^6.1.0
+  rxdart: ^0.27.7
+  receive_intent: ^0.2.7
+  audiotags: ^1.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^2.0.0
+
+flutter:
+  uses-material-design: true
