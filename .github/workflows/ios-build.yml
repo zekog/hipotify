@@ -12,6 +12,8 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: false # We fixed the submodule issue, but let's be safe
       
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -24,6 +26,11 @@ jobs:
         
       - name: Build iOS
         run: flutter build ios --release --no-codesign
+        env:
+          CODE_SIGNING_ALLOWED: NO
+          CODE_SIGNING_REQUIRED: NO
+          CODE_SIGN_IDENTITY: ""
+          PROVISIONING_PROFILE_SPECIFIER: ""
         
       - name: Package IPA
         run: |
