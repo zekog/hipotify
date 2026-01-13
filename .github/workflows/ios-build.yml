@@ -25,8 +25,14 @@ jobs:
       - name: Build iOS
         run: flutter build ios --release --no-codesign
         
+      - name: Package IPA
+        run: |
+          mkdir -p Payload
+          mv build/ios/iphoneos/Runner.app Payload/
+          zip -r Hipotify.ipa Payload
+        
       - name: Upload Artifact
         uses: actions/upload-artifact@v3
         with:
           name: ios-build
-          path: build/ios/iphoneos/Runner.app
+          path: Hipotify.ipa
