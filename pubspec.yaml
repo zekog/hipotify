@@ -23,7 +23,7 @@ dependencies:
   google_fonts: ^6.1.0
   rxdart: ^0.27.7
   receive_intent: ^0.2.7
-  audiotags: ^1.1.0
+  audiotags: 1.1.0
 
 dev_dependencies:
   flutter_test:
