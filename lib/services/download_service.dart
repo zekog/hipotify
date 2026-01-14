@@ -175,7 +175,7 @@ class DownloadService {
         // Use audiotags for iOS
         final tag = at.Tag(
           title: track.title,
-          artist: track.artistName,
+          trackArtist: track.artistName,
           album: track.albumTitle,
           year: int.tryParse(track.releaseDate?.split('-').first ?? ''),
           pictures: coverPath != null ? [
