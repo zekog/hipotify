@@ -3,6 +3,8 @@ import 'package:provider/provider.dart';
 import '../providers/library_provider.dart';
 import '../providers/player_provider.dart';
 import '../widgets/track_tile.dart';
+import '../models/track.dart';
+import '../widgets/responsive_layout.dart';
 
 class LibraryScreen extends StatelessWidget {
   const LibraryScreen({super.key});
@@ -87,6 +89,47 @@ class LibraryScreen extends StatelessWidget {
           },
         ),
       ),
+    );
+  }
+
+  Widget _buildTrackList(BuildContext context, List<dynamic> tracks, {bool isDownloaded = false}) {
+    if (ResponsiveLayout.isTv(context)) {
+      return GridView.builder(
+        padding: const EdgeInsets.all(32),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          childAspectRatio: 5,
+          crossAxisSpacing: 32,
+          mainAxisSpacing: 16,
+        ),
+        itemCount: tracks.length,
+        itemBuilder: (context, index) {
+          final track = tracks[index];
+          return TrackTile(
+            track: track,
+            isDownloaded: isDownloaded,
+            onTap: () {
+              Provider.of<PlayerProvider>(context, listen: false)
+                  .playPlaylist(List<Track>.from(tracks), initialIndex: index);
+            },
+          );
+        },
+      );
+    }
+
+    return ListView.builder(
+      itemCount: tracks.length,
+      itemBuilder: (context, index) {
+        final track = tracks[index];
+        return TrackTile(
+          track: track,
+          isDownloaded: isDownloaded,
+          onTap: () {
+            Provider.of<PlayerProvider>(context, listen: false)
+                .playPlaylist(List<Track>.from(tracks), initialIndex: index);
+          },
+        );
+      },
     );
   }
 }

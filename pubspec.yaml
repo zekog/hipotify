@@ -16,13 +16,14 @@ dependencies:
   hive_flutter: ^1.1.0
   http: ^1.1.0
   dio: ^5.3.3
-  permission_handler: ^11.0.1
+  permission_handler: ^12.0.1
   path_provider: ^2.1.1
   cached_network_image: ^3.3.0
   archive: ^3.3.7
   google_fonts: ^6.1.0
-  rxdart: ^0.27.7
+  rxdart: ^0.28.0
   receive_intent: ^0.2.7
+  flutter_chrome_cast: ^1.2.9
 
 dev_dependencies:
   flutter_test:

@@ -363,6 +363,7 @@ class ApiService {
 
     final data = jsonDecode(response.body);
     final trackData = data['data'] ?? data;
+
     return _processStreamData(trackData);
   }
 
@@ -420,17 +421,21 @@ class ApiService {
   }
 
   static String? _parseFlacUrlFromMpd(String manifestText) {
-    // Regex-based parsing to find BaseURL
-    // Look for <BaseURL>...</BaseURL>
+    // Only look for <BaseURL>...</BaseURL> which indicates a single-file stream
+    // For segmented streams (SegmentTemplate), we return null to use DASH data URI
     final baseUrlRegex = RegExp(r'<BaseURL[^>]*>([^<]+)<\/BaseURL>', caseSensitive: false);
-    final matches = baseUrlRegex.allMatches(manifestText);
+    final baseMatches = baseUrlRegex.allMatches(manifestText);
     
-    for (final match in matches) {
+    for (final match in baseMatches) {
       final url = match.group(1)?.trim();
       if (url != null && _isValidMediaUrl(url)) {
+        print("ApiService: Found BaseURL: $url");
         return url;
       }
     }
+
+    // For segmented DASH (no BaseURL), return null to use data URI with DashAudioSource
+    print("ApiService: No BaseURL found, will use DASH data URI");
     return null;
   }
 

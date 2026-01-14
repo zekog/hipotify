@@ -6,12 +6,14 @@ import '../models/lyrics.dart';
 
 class LyricsViewer extends StatefulWidget {
   final Lyrics lyrics;
-  final AudioPlayer player;
+  final Stream<Duration> positionStream;
+  final Function(Duration) onSeek;
 
   const LyricsViewer({
     super.key,
     required this.lyrics,
-    required this.player,
+    required this.positionStream,
+    required this.onSeek,
   });
 
   @override
@@ -31,7 +33,7 @@ class _LyricsViewerState extends State<LyricsViewer> {
   void initState() {
     super.initState();
     _parseLyrics();
-    _positionSubscription = widget.player.positionStream.listen((position) {
+    _positionSubscription = widget.positionStream.listen((position) {
       _updateCurrentLine(position);
     });
   }
@@ -171,7 +173,7 @@ class _LyricsViewerState extends State<LyricsViewer> {
               return GestureDetector(
                 key: key,
                 onTap: () {
-                  widget.player.seek(line.time);
+                  widget.onSeek(line.time);
                   setState(() {
                     _isUserScrolling = false;
                   });

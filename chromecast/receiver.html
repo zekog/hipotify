@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Hipotify Chromecast Receiver</title>
+    <script src="//www.gstatic.com/cast/sdk/libs/caf/receiver/v3/cast_receiver_framework.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #000;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            color: white;
+        }
+
+        #background {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-size: cover;
+            background-position: center;
+            filter: blur(60px) brightness(0.4);
+            transform: scale(1.1);
+            transition: background-image 1s ease-in-out;
+            z-index: 0;
+        }
+
+        #container {
+            position: relative;
+            z-index: 1;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            padding: 0 10%;
+        }
+
+        #lyrics-container {
+            height: 80vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            mask-image: linear-gradient(to bottom, transparent, black 20%, black 80%, transparent);
+            -webkit-mask-image: linear-gradient(to bottom, transparent, black 20%, black 80%, transparent);
+        }
+
+        #lyrics-content {
+            transition: transform 0.6s cubic-bezier(0.23, 1, 0.32, 1);
+        }
+
+        .lyric-line {
+            font-size: 4.5vh;
+            font-weight: 800;
+            margin: 3vh 0;
+            opacity: 0.3;
+            transition: all 0.5s ease;
+            line-height: 1.2;
+            letter-spacing: -0.02em;
+        }
+
+        .lyric-line.active {
+            opacity: 1;
+            transform: scale(1.05);
+            text-shadow: 0 0 30px rgba(255,255,255,0.3);
+        }
+
+        .lyric-line.past {
+            opacity: 0.2;
+        }
+
+        #metadata {
+            position: absolute;
+            bottom: 5vh;
+            left: 5vh;
+            display: flex;
+            align-items: center;
+            gap: 3vh;
+            z-index: 2;
+        }
+
+        #album-art {
+            width: 12vh;
+            height: 12vh;
+            border-radius: 1vh;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+
+        #track-info h1 {
+            font-size: 3vh;
+            margin: 0;
+            font-weight: 700;
+        }
+
+        #track-info p {
+            font-size: 2vh;
+            margin: 0.5vh 0 0 0;
+            opacity: 0.7;
+        }
+
+        cast-media-player {
+            display: none; /* Hide default player UI */
+        }
+    </style>
+</head>
+<body>
+    <div id="background"></div>
+    <div id="container">
+        <div id="lyrics-container">
+            <div id="lyrics-content"></div>
+        </div>
+    </div>
+
+    <div id="metadata">
+        <img id="album-art" src="" alt="">
+        <div id="track-info">
+            <h1 id="title"></h1>
+            <p id="artist"></p>
+        </div>
+    </div>
+
+    <cast-media-player></cast-media-player>
+
+    <script>
+        const context = cast.framework.CastReceiverContext.getInstance();
+        const playerManager = context.getPlayerManager();
+        const lyricsContent = document.getElementById('lyrics-content');
+        const background = document.getElementById('background');
+        const albumArt = document.getElementById('album-art');
+        const titleEl = document.getElementById('title');
+        const artistEl = document.getElementById('artist');
+
+        let lyrics = [];
+        let currentLineIndex = -1;
+
+        // Listen for metadata changes
+        playerManager.setMessageInterceptor(
+            cast.framework.messages.MessageType.LOAD,
+            loadRequestData => {
+                if (loadRequestData.media && loadRequestData.media.metadata) {
+                    const metadata = loadRequestData.media.metadata;
+                    titleEl.textContent = metadata.title || '';
+                    artistEl.textContent = metadata.artist || '';
+                    if (metadata.images && metadata.images.length > 0) {
+                        const url = metadata.images[0].url;
+                        albumArt.src = url;
+                        background.style.backgroundImage = `url(${url})`;
+                    }
+                }
+
+                // Extract lyrics from tracks if available
+                if (loadRequestData.media.tracks) {
+                    const lyricsTrack = loadRequestData.media.tracks.find(t => t.type === 'TEXT');
+                    if (lyricsTrack && lyricsTrack.trackContentId) {
+                        // If it's a data URI, we can parse it
+                        if (lyricsTrack.trackContentId.startsWith('data:text/vtt;base64,')) {
+                            const base64 = lyricsTrack.trackContentId.split(',')[1];
+                            const vtt = atob(base64);
+                            parseVTT(vtt);
+                        }
+                    }
+                }
+
+                return loadRequestData;
+            }
+        );
+
+        function parseVTT(vtt) {
+            lyrics = [];
+            const lines = vtt.split('\n');
+            let currentLyric = null;
+
+            for (let line of lines) {
+                const match = line.match(/(\d{2}:\d{2}:\d{2}\.\d{3}) --> (\d{2}:\d{2}:\d{2}\.\d{3})/);
+                if (match) {
+                    currentLyric = {
+                        start: parseTime(match[1]),
+                        end: parseTime(match[2]),
+                        text: ''
+                    };
+                } else if (currentLyric && line.trim() && line !== 'WEBVTT') {
+                    currentLyric.text = line.trim();
+                    lyrics.push(currentLyric);
+                    currentLyric = null;
+                }
+            }
+            renderLyrics();
+        }
+
+        function parseTime(timeStr) {
+            const parts = timeStr.split(':');
+            const secondsParts = parts[2].split('.');
+            return parseInt(parts[0]) * 3600 + parseInt(parts[1]) * 60 + parseInt(secondsParts[0]) + parseInt(secondsParts[1]) / 1000;
+        }
+
+        function renderLyrics() {
+            lyricsContent.innerHTML = '';
+            lyrics.forEach((lyric, index) => {
+                const div = document.createElement('div');
+                div.className = 'lyric-line';
+                div.id = `lyric-${index}`;
+                div.textContent = lyric.text;
+                lyricsContent.appendChild(div);
+            });
+            currentLineIndex = -1;
+            updateLyrics(0);
+        }
+
+        function updateLyrics(currentTime) {
+            let index = -1;
+            for (let i = 0; i < lyrics.length; i++) {
+                if (currentTime >= lyrics[i].start && currentTime < lyrics[i].end) {
+                    index = i;
+                    break;
+                }
+                if (currentTime < lyrics[i].start) break;
+            }
+
+            if (index !== currentLineIndex) {
+                currentLineIndex = index;
+                const lines = document.querySelectorAll('.lyric-line');
+                lines.forEach((line, i) => {
+                    line.classList.remove('active', 'past');
+                    if (i === currentLineIndex) {
+                        line.classList.add('active');
+                    } else if (i < currentLineIndex) {
+                        line.classList.add('past');
+                    }
+                });
+
+                if (currentLineIndex !== -1) {
+                    const activeLine = document.getElementById(`lyric-${currentLineIndex}`);
+                    const containerHeight = document.getElementById('lyrics-container').offsetHeight;
+                    const offset = activeLine.offsetTop - (containerHeight / 2) + (activeLine.offsetHeight / 2);
+                    lyricsContent.style.transform = `translateY(${-offset}px)`;
+                }
+            }
+        }
+
+        // Sync with player time
+        const playerData = new cast.framework.PlayerData();
+        const playerDataBinder = new cast.framework.PlayerDataBinder(playerData);
+
+        playerDataBinder.addEventListener(
+            cast.framework.PlayerDataEventType.CURRENT_TIME_CHANGED,
+            e => {
+                updateLyrics(e.value);
+            }
+        );
+
+        context.start();
+    </script>
+</body>
+</html>

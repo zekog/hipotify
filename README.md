@@ -12,6 +12,7 @@ Hipotify is a free, open-source, and ad-free music player for Android based on T
 - 📁 **Local Storage**: Playlists, liked songs, and recently listened history saved locally via Hive.
 - 🔎 **Search**: Find media and sort by album, track, artist, or playlist.
 - 📊 **Stats for Nerds**: Real-time technical details (bit depth, sample rate, etc.).
+- 📡 **Chromecast**: Stream to your TV with synchronized lyrics.
 - 📶 **Audio Quality Selector**: Switch between Low, High, Lossless, and Hi-Res audio qualities.
 
 ## ⚙️ How It Works

@@ -8,6 +8,8 @@ import '../models/album.dart';
 import '../models/artist.dart';
 import 'album_screen.dart';
 import 'artist_screen.dart';
+import '../widgets/focusable_card.dart';
+import '../widgets/responsive_layout.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -22,6 +24,15 @@ class _HomeScreenState extends State<HomeScreen> {
     final recentTracks = HiveService.getRecentlyPlayed();
     final recentAlbums = HiveService.getRecentAlbums();
     final recentArtists = HiveService.getRecentArtists();
+    final isTv = ResponsiveLayout.isTv(context);
+
+    // Adjust sizes for TV
+    final double sectionSpacing = isTv ? 48.0 : 24.0;
+    final double listHeight = isTv ? 280.0 : 240.0;
+    final double cardWidth = isTv ? 180.0 : 140.0;
+    final double artistCardWidth = isTv ? 160.0 : 120.0;
+    final double artistImageSize = isTv ? 140.0 : 100.0;
+    final double titleFontSize = isTv ? 24.0 : 20.0;
 
     return Scaffold(
       appBar: AppBar(
@@ -32,6 +43,7 @@ class _HomeScreenState extends State<HomeScreen> {
         centerTitle: false,
         elevation: 0,
         backgroundColor: Colors.transparent,
+        automaticallyImplyLeading: false, // Hide back button on TV if present
       ),
       body: RefreshIndicator(
         onRefresh: () async {
@@ -41,63 +53,63 @@ class _HomeScreenState extends State<HomeScreen> {
         },
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.symmetric(vertical: 16),
+          padding: EdgeInsets.symmetric(vertical: 16, horizontal: isTv ? 32.0 : 0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (recentTracks.isNotEmpty) ...[
-                _buildSectionTitle("Recently Played"),
+                _buildSectionTitle("Recently Played", fontSize: titleFontSize),
                 const SizedBox(height: 12),
                 SizedBox(
-                  height: 200,
+                  height: listHeight,
                   child: ListView.builder(
                     key: const ValueKey('recent_tracks'),
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                     scrollDirection: Axis.horizontal,
                     itemCount: recentTracks.length,
                     itemBuilder: (context, index) {
                       final track = recentTracks[index];
-                      return _buildTrackCard(context, track);
+                      return _buildTrackCard(context, track, width: cardWidth);
                     },
                   ),
                 ),
-                const SizedBox(height: 32),
+                SizedBox(height: sectionSpacing),
               ],
               if (recentAlbums.isNotEmpty) ...[
-                _buildSectionTitle("Recently Played Albums"),
+                _buildSectionTitle("Recently Played Albums", fontSize: titleFontSize),
                 const SizedBox(height: 12),
                 SizedBox(
-                  height: 200,
+                  height: listHeight,
                   child: ListView.builder(
                     key: const ValueKey('recent_albums'),
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                     scrollDirection: Axis.horizontal,
                     itemCount: recentAlbums.length,
                     itemBuilder: (context, index) {
                       final album = recentAlbums[index];
-                      return _buildAlbumCard(context, album);
+                      return _buildAlbumCard(context, album, width: cardWidth);
                     },
                   ),
                 ),
-                const SizedBox(height: 32),
+                SizedBox(height: sectionSpacing),
               ],
               if (recentArtists.isNotEmpty) ...[
-                _buildSectionTitle("Recently Played Artists"),
+                _buildSectionTitle("Recently Played Artists", fontSize: titleFontSize),
                 const SizedBox(height: 12),
                 SizedBox(
-                  height: 160,
+                  height: listHeight,
                   child: ListView.builder(
                     key: const ValueKey('recent_artists'),
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                     scrollDirection: Axis.horizontal,
                     itemCount: recentArtists.length,
                     itemBuilder: (context, index) {
                       final artist = recentArtists[index];
-                      return _buildArtistCard(context, artist);
+                      return _buildArtistCard(context, artist, width: artistCardWidth, imageSize: artistImageSize);
                     },
                   ),
                 ),
-                const SizedBox(height: 32),
+                SizedBox(height: sectionSpacing),
               ],
               if (recentTracks.isEmpty && recentAlbums.isEmpty && recentArtists.isEmpty)
                 Center(
@@ -121,13 +133,13 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildSectionTitle(String title) {
+  Widget _buildSectionTitle(String title, {double fontSize = 20.0}) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Text(
         title,
-        style: const TextStyle(
-          fontSize: 20,
+        style: TextStyle(
+          fontSize: fontSize,
           fontWeight: FontWeight.bold,
           letterSpacing: -0.5,
         ),
@@ -135,150 +147,175 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildTrackCard(BuildContext context, Track track) {
-    return GestureDetector(
-      onTap: () {
-        context.read<PlayerProvider>().playTrack(track);
-      },
-      child: Container(
-        width: 140,
-        margin: const EdgeInsets.only(right: 16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: CachedNetworkImage(
-                imageUrl: track.coverUrl,
-                width: 140,
-                height: 140,
-                fit: BoxFit.cover,
-                placeholder: (context, url) => Container(
-                  color: Colors.grey[900],
-                  child: const Icon(Icons.music_note, color: Colors.white24),
-                ),
-                errorWidget: (context, url, error) => Container(
-                  color: Colors.grey[900],
-                  child: const Icon(Icons.error, color: Colors.white24),
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              track.title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
-            ),
-            Text(
-              track.artistName,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: Colors.grey[400], fontSize: 12),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAlbumCard(BuildContext context, Album album) {
-    return GestureDetector(
-      onTap: () {
-        Navigator.of(context).push(
-          MaterialPageRoute(builder: (context) => AlbumScreen(albumId: album.id)),
-        );
-      },
-      child: Container(
-        width: 140,
-        margin: const EdgeInsets.only(right: 16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: CachedNetworkImage(
-                imageUrl: album.coverUrl,
-                width: 140,
-                height: 140,
-                fit: BoxFit.cover,
-                placeholder: (context, url) => Container(
-                  color: Colors.grey[900],
-                  child: const Icon(Icons.album, color: Colors.white24),
-                ),
-                errorWidget: (context, url, error) => Container(
-                  color: Colors.grey[900],
-                  child: const Icon(Icons.error, color: Colors.white24),
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              album.title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
-            ),
-            Text(
-              album.artistName,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: Colors.grey[400], fontSize: 12),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildArtistCard(BuildContext context, Artist artist) {
-    return GestureDetector(
-      onTap: () {
-        Navigator.of(context).push(
-          MaterialPageRoute(builder: (context) => ArtistScreen(artistId: artist.id)),
-        );
-      },
-      child: Container(
-        width: 120,
-        margin: const EdgeInsets.only(right: 16),
-        child: Column(
-          children: [
-            Container(
-              width: 100,
-              height: 100,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.grey[900],
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.2),
-                    blurRadius: 10,
-                    offset: const Offset(0, 5),
+  Widget _buildTrackCard(BuildContext context, Track track, {double width = 140.0}) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 16),
+      child: FocusableCard(
+        onTap: () {
+          context.read<PlayerProvider>().playTrack(track);
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: SizedBox(
+          width: width,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: CachedNetworkImage(
+                  imageUrl: track.coverUrl,
+                  width: width,
+                  height: width,
+                  fit: BoxFit.cover,
+                  placeholder: (context, url) => Container(
+                    color: Colors.grey[900],
+                    child: const Icon(Icons.music_note, color: Colors.white24),
                   ),
-                ],
+                  errorWidget: (context, url, error) => Container(
+                    color: Colors.grey[900],
+                    child: const Icon(Icons.error, color: Colors.white24),
+                  ),
+                ),
               ),
-              child: ClipOval(
-                child: artist.pictureUrl.isNotEmpty
-                    ? CachedNetworkImage(
-                        imageUrl: artist.pictureUrl,
-                        width: 100,
-                        height: 100,
-                        fit: BoxFit.cover,
-                        placeholder: (context, url) => const Icon(Icons.person, size: 50, color: Colors.white24),
-                        errorWidget: (context, url, error) => const Icon(Icons.person, size: 50, color: Colors.white24),
-                      )
-                    : const Icon(Icons.person, size: 50, color: Colors.white24),
+              const SizedBox(height: 8),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      track.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                    ),
+                    Text(
+                      track.artistName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: Colors.grey[400], fontSize: 12),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              artist.name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14),
-            ),
-          ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAlbumCard(BuildContext context, Album album, {double width = 140.0}) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 16),
+      child: FocusableCard(
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (context) => AlbumScreen(albumId: album.id)),
+          );
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: SizedBox(
+          width: width,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: CachedNetworkImage(
+                  imageUrl: album.coverUrl,
+                  width: width,
+                  height: width,
+                  fit: BoxFit.cover,
+                  placeholder: (context, url) => Container(
+                    color: Colors.grey[900],
+                    child: const Icon(Icons.album, color: Colors.white24),
+                  ),
+                  errorWidget: (context, url, error) => Container(
+                    color: Colors.grey[900],
+                    child: const Icon(Icons.error, color: Colors.white24),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      album.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                    ),
+                    Text(
+                      album.artistName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: Colors.grey[400], fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildArtistCard(BuildContext context, Artist artist, {double width = 120.0, double imageSize = 100.0}) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 16),
+      child: FocusableCard(
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (context) => ArtistScreen(artistId: artist.id)),
+          );
+        },
+        borderRadius: BorderRadius.circular(100), // Circular focus for artists
+        child: SizedBox(
+          width: width,
+          child: Column(
+            children: [
+              Container(
+                width: imageSize,
+                height: imageSize,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.grey[900],
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.2),
+                      blurRadius: 10,
+                      offset: const Offset(0, 5),
+                    ),
+                  ],
+                ),
+                child: ClipOval(
+                  child: artist.pictureUrl.isNotEmpty
+                      ? CachedNetworkImage(
+                          imageUrl: artist.pictureUrl,
+                          width: imageSize,
+                          height: imageSize,
+                          fit: BoxFit.cover,
+                          placeholder: (context, url) => const Icon(Icons.person, size: 50, color: Colors.white24),
+                          errorWidget: (context, url, error) => const Icon(Icons.person, size: 50, color: Colors.white24),
+                        )
+                      : const Icon(Icons.person, size: 50, color: Colors.white24),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                artist.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14),
+              ),
+            ],
+          ),
         ),
       ),
     );

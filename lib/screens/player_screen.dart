@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:flutter_chrome_cast/flutter_chrome_cast.dart';
 import '../providers/player_provider.dart';
 import '../providers/library_provider.dart';
 import '../services/download_service.dart';
@@ -61,6 +62,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
             ),
             actions: [
               IconButton(
+                icon: Icon(Icons.cast, color: player.isCasting ? Colors.green : Colors.white),
+                onPressed: () => _showCastDialog(context, player),
+                tooltip: "Cast to Device",
+              ),
+              IconButton(
                 icon: Icon(_showStats ? Icons.analytics : Icons.analytics_outlined),
                 onPressed: () => setState(() => _showStats = !_showStats),
                 tooltip: "Stats for Nerds",
@@ -100,7 +106,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       Expanded(
                         child: Center(
                           child: (_showLyrics && player.currentLyrics != null)
-                            ? LyricsViewer(lyrics: player.currentLyrics!, player: player.player)
+                            ? LyricsViewer(
+                                lyrics: player.currentLyrics!, 
+                                positionStream: player.isCasting 
+                                  ? GoogleCastRemoteMediaClient.instance.playerPositionStream 
+                                  : player.player.positionStream,
+                                onSeek: (pos) => player.seek(pos),
+                              )
                             : _buildArtworkView(track),
                         ),
                       ),
@@ -163,10 +175,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
                       // Seek Bar
                       StreamBuilder<Duration>(
-                        stream: player.player.positionStream,
+                        stream: player.isCasting 
+                          ? GoogleCastRemoteMediaClient.instance.playerPositionStream 
+                          : player.player.positionStream,
                         builder: (context, snapshot) {
                           final position = snapshot.data ?? Duration.zero;
-                          final duration = player.player.duration ?? Duration.zero;
+                          final duration = player.isCasting
+                            ? (GoogleCastRemoteMediaClient.instance.mediaStatus?.mediaInformation?.duration ?? Duration.zero)
+                            : (player.player.duration ?? Duration.zero);
                           
                           return Column(
                             children: [
@@ -180,10 +196,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                   overlayColor: Colors.white.withOpacity(0.1),
                                 ),
                                 child: Slider(
-                                  value: position.inSeconds.toDouble().clamp(0, duration.inSeconds.toDouble()),
+                                  value: position.inSeconds.toDouble().clamp(0.0, duration.inSeconds.toDouble()).toDouble(),
                                   max: duration.inSeconds.toDouble() > 0 ? duration.inSeconds.toDouble() : 1.0,
                                   onChanged: (value) {
-                                    player.player.seek(Duration(seconds: value.toInt()));
+                                    player.seek(Duration(seconds: value.toInt()));
                                   },
                                 ),
                               ),
@@ -306,7 +322,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
     return StreamBuilder<bool>(
       stream: player.player.playingStream,
       builder: (context, snapshot) {
-        final playing = snapshot.data ?? false;
+        bool playing = snapshot.data ?? false;
+        if (player.isCasting) {
+          final castState = GoogleCastRemoteMediaClient.instance.mediaStatus?.playerState;
+          playing = castState == CastMediaPlayerState.playing;
+        }
         return Container(
           width: 72,
           height: 72,
@@ -370,6 +390,75 @@ class _PlayerScreenState extends State<PlayerScreen> {
         children: [
           Text(label, style: const TextStyle(color: Colors.white70, fontSize: 13)),
           Text(value, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+        ],
+      ),
+    );
+  }
+
+  void _showCastDialog(BuildContext context, PlayerProvider player) {
+    player.startCastDiscovery();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        title: const Text("Google Cast", style: TextStyle(color: Colors.white)),
+        content: SizedBox(
+          width: 300,
+          height: 400,
+          child: Consumer<PlayerProvider>(
+            builder: (context, player, child) {
+              return Column(
+                children: [
+                  if (player.isCasting && player.connectedDevice != null)
+                    ListTile(
+                      title: Text(player.connectedDevice!.friendlyName, style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+                      subtitle: const Text("Connected", style: TextStyle(color: Colors.green)),
+                      leading: const Icon(Icons.cast_connected, color: Colors.green),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.close, color: Colors.red),
+                        onPressed: () {
+                          player.stopCasting();
+                          Navigator.pop(context);
+                        },
+                      ),
+                    ),
+                  const Divider(color: Colors.white24),
+                  Expanded(
+                    child: player.castDevices.isEmpty
+                      ? const Center(child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            CircularProgressIndicator(),
+                            SizedBox(height: 16),
+                            Text("Searching for devices...", style: TextStyle(color: Colors.white70)),
+                          ],
+                        ))
+                      : ListView.builder(
+                          itemCount: player.castDevices.length,
+                          itemBuilder: (context, index) {
+                            final device = player.castDevices[index];
+                            final isConnected = player.connectedDevice?.deviceID == device.deviceID;
+                            return ListTile(
+                              title: Text(device.friendlyName, style: TextStyle(color: isConnected ? Colors.green : Colors.white)),
+                              leading: Icon(Icons.tv, color: isConnected ? Colors.green : Colors.white),
+                              onTap: isConnected ? null : () {
+                                player.connectAndCast(device);
+                                Navigator.pop(context);
+                              },
+                            );
+                          },
+                        ),
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Close"),
+          ),
         ],
       ),
     );
