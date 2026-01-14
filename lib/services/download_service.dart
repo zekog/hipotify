@@ -5,7 +5,6 @@ import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:archive/archive.dart';
 import 'package:archive/archive_io.dart';
-import 'package:audiotags/audiotags.dart' as at;
 import '../models/track.dart';
 import '../models/album.dart';
 import 'api_service.dart';
@@ -172,21 +171,8 @@ class DownloadService {
           'coverPath': coverPath,
         });
       } else if (Platform.isIOS) {
-        // Use audiotags for iOS
-        final tag = at.Tag(
-          title: track.title,
-          trackArtist: track.artistName,
-          album: track.albumTitle,
-          year: int.tryParse(track.releaseDate?.split('-').first ?? ''),
-          pictures: coverPath != null ? [
-            at.Picture(
-              bytes: await File(coverPath).readAsBytes(),
-              mimeType: at.MimeType.jpeg,
-              pictureType: at.PictureType.coverFront,
-            )
-          ] : [],
-        );
-        await at.AudioTags.write(filePath, tag);
+        // iOS metadata tagging skipped - audiotags has linker issues in CI
+        print("iOS: Skipping metadata tagging (not supported in this build)");
       }
 
       print("Successfully tagged natively: ${track.title}");
