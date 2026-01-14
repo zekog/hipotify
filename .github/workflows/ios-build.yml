@@ -43,7 +43,14 @@ jobs:
       - name: Package IPA
         run: |
           mkdir -p Payload
-          mv build/ios/iphoneos/Runner.app Payload/
+          # Find the built app (xcodebuild outputs to DerivedData, not Flutter's build folder)
+          APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "Runner.app" -type d | head -1)
+          if [ -z "$APP_PATH" ]; then
+            echo "Runner.app not found!"
+            exit 1
+          fi
+          echo "Found app at: $APP_PATH"
+          cp -R "$APP_PATH" Payload/
           zip -r Hipotify.ipa Payload
         
       - name: Upload Artifact
