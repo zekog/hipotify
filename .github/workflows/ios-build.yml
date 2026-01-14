@@ -30,6 +30,8 @@ jobs:
       - name: Build iOS
         run: |
           flutter build ios --release --no-codesign --config-only
+          # Fix for rsync error in Xcode 14.3+
+          find ios/Pods -name "*-frameworks.sh" -exec sed -i '' 's/source="$(readlink "${source}")"/source="$(readlink -f "${source}")"/g' {} +
           xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -configuration Release -sdk iphoneos CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" PROVISIONING_PROFILE_SPECIFIER="" -quiet
         
       - name: Package IPA

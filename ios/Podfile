@@ -20,6 +20,8 @@ post_install do |installer|
       config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '13.0'
       # Fix for Xcode 16 CoreAudioTypes warning
       config.build_settings['OTHER_LDFLAGS'] = '$(inherited) -framework CoreAudioTypes'
+      # Disable sandboxing for Xcode 16 compatibility
+      config.build_settings['ENABLE_USER_SCRIPT_SANDBOXING'] = 'NO'
     end
   end
 end
