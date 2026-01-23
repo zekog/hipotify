@@ -7,6 +7,8 @@ import '../services/api_service.dart';
 import '../widgets/track_tile.dart';
 import 'package:provider/provider.dart';
 import '../providers/player_provider.dart';
+import '../utils/snackbar_helper.dart';
+import '../main.dart';
 import 'main_screen.dart';
 
 class AlbumScreen extends StatefulWidget {
@@ -29,12 +31,7 @@ class _AlbumScreenState extends State<AlbumScreen> {
   }
 
   void _navigateToMainScreen(int index) {
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(
-        builder: (context) => MainScreen(initialIndex: index),
-      ),
-      (route) => false,
-    );
+    BottomNavBarState.navigateToMainScreen(context, index);
   }
 
   Future<void> _fetchData() async {
@@ -51,9 +48,7 @@ class _AlbumScreenState extends State<AlbumScreen> {
     } catch (e) {
       print("Error fetching album data: $e");
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Error: $e")),
-        );
+        showSnackBar(context, "Error: $e");
       }
       setState(() => _isLoading = false);
     }
@@ -81,29 +76,7 @@ class _AlbumScreenState extends State<AlbumScreen> {
     }
 
     return Scaffold(
-      bottomNavigationBar: ClipRRect(
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-          child: BottomNavigationBar(
-            currentIndex: 0, // Home is selected by default
-            onTap: (index) {
-              _navigateToMainScreen(index);
-            },
-            backgroundColor: Colors.black.withOpacity(0.5),
-            elevation: 0,
-            type: BottomNavigationBarType.fixed,
-            selectedItemColor: Theme.of(context).primaryColor,
-            unselectedItemColor: Colors.white.withOpacity(0.5),
-            items: const [
-              BottomNavigationBarItem(icon: Icon(Icons.home_filled), label: 'Home'),
-              BottomNavigationBarItem(icon: Icon(Icons.search), label: 'Search'),
-              BottomNavigationBarItem(icon: Icon(Icons.library_music), label: 'Library'),
-              BottomNavigationBarItem(icon: Icon(Icons.download), label: 'Download'),
-              BottomNavigationBarItem(icon: Icon(Icons.settings), label: 'Settings'),
-            ],
-          ),
-        ),
-      ),
+      // Bottom navigation bar is now global in MaterialApp builder
       body: CustomScrollView(
         slivers: [
           SliverAppBar(
@@ -194,6 +167,8 @@ class _AlbumScreenState extends State<AlbumScreen> {
                       );
                     },
                   ),
+                  // Add bottom padding to prevent overlap with bottom navigation bar
+                  SizedBox(height: kBottomNavigationBarHeight + MediaQuery.of(context).padding.bottom),
                 ],
               ),
             ),

@@ -5,6 +5,7 @@ import '../services/download_service.dart';
 import '../services/api_service.dart';
 import '../models/track.dart';
 import '../models/album.dart';
+import '../utils/snackbar_helper.dart';
 
 class DownloadScreen extends StatefulWidget {
   const DownloadScreen({super.key});
@@ -80,12 +81,12 @@ class _DownloadScreenState extends State<DownloadScreen> {
         },
       );
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Download Complete!")));
+        showSnackBar(context, "Download Complete!");
         setState(() => _statusMessage = "Download Complete");
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+        showSnackBar(context, "Error: $e");
         setState(() => _statusMessage = "Error: $e");
       }
     } finally {
@@ -100,7 +101,7 @@ class _DownloadScreenState extends State<DownloadScreen> {
     final currentTrack = player.currentTrack;
     
     if (currentTrack == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("No track playing")));
+      showSnackBar(context, "No track playing");
       return;
     }
 
@@ -141,13 +142,13 @@ class _DownloadScreenState extends State<DownloadScreen> {
       );
       
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Downloaded ${album.title} Complete!")));
+        showSnackBar(context, "Downloaded ${album.title} Complete!");
         setState(() => _statusMessage = "Album Download Complete");
       }
       
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+        showSnackBar(context, "Error: $e");
         setState(() => _statusMessage = "Error: $e");
       }
     } finally {

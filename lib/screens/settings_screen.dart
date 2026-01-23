@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/hive_service.dart';
+import '../utils/snackbar_helper.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -32,9 +33,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await HiveService.setAudioQuality(_selectedQuality);
     await HiveService.setAmoledMode(_amoledMode);
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Settings Saved')),
-      );
+      showSnackBar(context, 'Settings Saved');
     }
   }
 
@@ -121,7 +120,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   );
                   if (confirm == true) {
                     await HiveService.clearAll();
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("All data cleared. Restart app.")));
+                    showSnackBar(context, "All data cleared. Restart app.");
                   }
                 },
                 child: const Text("CLEAR ALL DATA & CACHE"),
