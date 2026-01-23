@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../models/album.dart';
@@ -6,6 +7,7 @@ import '../services/api_service.dart';
 import '../widgets/track_tile.dart';
 import 'package:provider/provider.dart';
 import '../providers/player_provider.dart';
+import 'main_screen.dart';
 
 class AlbumScreen extends StatefulWidget {
   final String albumId;
@@ -24,6 +26,15 @@ class _AlbumScreenState extends State<AlbumScreen> {
   void initState() {
     super.initState();
     _fetchData();
+  }
+
+  void _navigateToMainScreen(int index) {
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(
+        builder: (context) => MainScreen(initialIndex: index),
+      ),
+      (route) => false,
+    );
   }
 
   Future<void> _fetchData() async {
@@ -70,6 +81,29 @@ class _AlbumScreenState extends State<AlbumScreen> {
     }
 
     return Scaffold(
+      bottomNavigationBar: ClipRRect(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: BottomNavigationBar(
+            currentIndex: 0, // Home is selected by default
+            onTap: (index) {
+              _navigateToMainScreen(index);
+            },
+            backgroundColor: Colors.black.withOpacity(0.5),
+            elevation: 0,
+            type: BottomNavigationBarType.fixed,
+            selectedItemColor: Theme.of(context).primaryColor,
+            unselectedItemColor: Colors.white.withOpacity(0.5),
+            items: const [
+              BottomNavigationBarItem(icon: Icon(Icons.home_filled), label: 'Home'),
+              BottomNavigationBarItem(icon: Icon(Icons.search), label: 'Search'),
+              BottomNavigationBarItem(icon: Icon(Icons.library_music), label: 'Library'),
+              BottomNavigationBarItem(icon: Icon(Icons.download), label: 'Download'),
+              BottomNavigationBarItem(icon: Icon(Icons.settings), label: 'Settings'),
+            ],
+          ),
+        ),
+      ),
       body: CustomScrollView(
         slivers: [
           SliverAppBar(
@@ -152,6 +186,7 @@ class _AlbumScreenState extends State<AlbumScreen> {
                       final track = _tracks[index];
                       return TrackTile(
                         track: track,
+                        showMenu: true,
                         onTap: () {
                           Provider.of<PlayerProvider>(context, listen: false)
                               .playPlaylist(_tracks, initialIndex: index);

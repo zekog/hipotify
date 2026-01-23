@@ -11,6 +11,7 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   final _apiUrlController = TextEditingController();
   String _selectedQuality = 'LOSSLESS';
+  bool _amoledMode = false;
 
   @override
   void initState() {
@@ -22,12 +23,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() {
       _apiUrlController.text = HiveService.apiUrl ?? '';
       _selectedQuality = HiveService.audioQuality;
+      _amoledMode = HiveService.amoledMode;
     });
   }
 
   Future<void> _saveSettings() async {
     await HiveService.setApiUrl(_apiUrlController.text);
     await HiveService.setAudioQuality(_selectedQuality);
+    await HiveService.setAmoledMode(_amoledMode);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Settings Saved')),
@@ -74,6 +77,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
               },
             ),
             const SizedBox(height: 20),
+            const Text('Appearance', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 10),
+            SwitchListTile(
+              title: const Text('AMOLED Mode'),
+              subtitle: const Text('Use pure black background instead of dark gray'),
+              value: _amoledMode,
+              onChanged: (value) {
+                setState(() => _amoledMode = value);
+              },
+            ),
             const SizedBox(height: 20),
             SizedBox(
               width: double.infinity,

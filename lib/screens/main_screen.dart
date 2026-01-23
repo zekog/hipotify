@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:provider/provider.dart';
 import '../providers/player_provider.dart';
 import '../services/hive_service.dart';
@@ -11,18 +12,21 @@ import 'download_screen.dart';
 import '../widgets/responsive_layout.dart';
 
 class MainScreen extends StatefulWidget {
-  const MainScreen({super.key});
+  final int? initialIndex;
+  const MainScreen({super.key, this.initialIndex});
 
   @override
   State<MainScreen> createState() => _MainScreenState();
 }
 
 class _MainScreenState extends State<MainScreen> {
-  int _currentIndex = 0;
+  late int _currentIndex;
+  final GlobalKey<State<SearchScreen>> _searchScreenKey = GlobalKey<State<SearchScreen>>();
 
   @override
   void initState() {
     super.initState();
+    _currentIndex = widget.initialIndex ?? 0;
     // Check if API URL is set on startup
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (HiveService.apiUrl == null || HiveService.apiUrl!.isEmpty) {
@@ -51,9 +55,9 @@ class _MainScreenState extends State<MainScreen> {
     );
   }
 
-  final List<Widget> _screens = [
+  List<Widget> get _screens => [
     const HomeScreen(),
-    const SearchScreen(),
+    SearchScreen(key: _searchScreenKey),
     const LibraryScreen(),
     const DownloadScreen(),
     const SettingsScreen(),
@@ -63,6 +67,17 @@ class _MainScreenState extends State<MainScreen> {
     setState(() => _currentIndex = index);
     // Hide MiniPlayer on Download tab (index 3)
     Provider.of<PlayerProvider>(context, listen: false).setMiniPlayerHidden(index == 3);
+    
+    // Reset SearchScreen to history when navigating to it (index 1)
+    if (index == 1) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final state = _searchScreenKey.currentState;
+        if (state != null) {
+          // Call public method resetToHistory
+          (state as dynamic).resetToHistory();
+        }
+      });
+    }
   }
 
   @override

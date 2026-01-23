@@ -40,6 +40,25 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
     notifyListeners();
   }
 
+  // Loop mode: 0 = off, 1 = track, 2 = playlist
+  int _loopMode = 0;
+  int get loopMode => _loopMode;
+
+  Future<void> toggleLoopMode() async {
+    _loopMode = (_loopMode + 1) % 3;
+    if (_loopMode == 1) {
+      // Loop track
+      await _player.setLoopMode(LoopMode.one);
+    } else if (_loopMode == 2) {
+      // Loop playlist
+      await _player.setLoopMode(LoopMode.all);
+    } else {
+      // Off
+      await _player.setLoopMode(LoopMode.off);
+    }
+    notifyListeners();
+  }
+
 
 
   ConcatenatingAudioSource? _playlist;
@@ -107,6 +126,13 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
   Future<void> playPlaylist(List<Track> tracks, {int initialIndex = 0}) async {
     _queue = List.from(tracks);
     _currentIndex = initialIndex;
+    await _loadAndPlayQueue();
+  }
+
+  Future<void> playRandomTrack() async {
+    if (_queue.isEmpty) return;
+    final random = (DateTime.now().millisecondsSinceEpoch % _queue.length);
+    _currentIndex = random;
     await _loadAndPlayQueue();
   }
 
@@ -257,15 +283,26 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
         _currentIndex++;
         await castCurrentTrack();
         notifyListeners();
+      } else if (_loopMode == 2) {
+        // Loop playlist - go to first track
+        _currentIndex = 0;
+        await castCurrentTrack();
+        notifyListeners();
       }
       return;
     }
-    if (_player.hasNext) {
-      await _player.seekToNext();
-    } else if (_currentIndex < _queue.length - 1) {
-      // If player doesn't have next (loading failed?), try to force load
+    
+    // Check if we can go to next track in queue
+    if (_currentIndex < _queue.length - 1) {
       _currentIndex++;
       await _loadAndPlayQueue();
+    } else if (_loopMode == 2) {
+      // Loop playlist - go to first track
+      _currentIndex = 0;
+      await _loadAndPlayQueue();
+    } else if (_player.hasNext) {
+      // Fallback to player's next (in case of windowing issues)
+      await _player.seekToNext();
     }
   }
 
@@ -275,14 +312,26 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
         _currentIndex--;
         await castCurrentTrack();
         notifyListeners();
+      } else if (_loopMode == 2) {
+        // Loop playlist - go to last track
+        _currentIndex = _queue.length - 1;
+        await castCurrentTrack();
+        notifyListeners();
       }
       return;
     }
-    if (_player.hasPrevious) {
-      await _player.seekToPrevious();
-    } else if (_currentIndex > 0) {
+    
+    // Check if we can go to previous track in queue
+    if (_currentIndex > 0) {
       _currentIndex--;
       await _loadAndPlayQueue();
+    } else if (_loopMode == 2) {
+      // Loop playlist - go to last track
+      _currentIndex = _queue.length - 1;
+      await _loadAndPlayQueue();
+    } else if (_player.hasPrevious) {
+      // Fallback to player's previous (in case of windowing issues)
+      await _player.seekToPrevious();
     }
   }
 
