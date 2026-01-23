@@ -1,7 +1,9 @@
+import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../models/track.dart';
 import '../models/album.dart';
 import '../models/artist.dart';
+import '../models/playlist.dart';
 
 class HiveService {
   static const String boxSettings = 'settings';
@@ -17,6 +19,8 @@ class HiveService {
     await Hive.openBox(boxDownloads);
     await Hive.openBox(boxPlaylists);
     await Hive.openBox(boxHistory);
+    // Initialize AMOLED mode notifier with saved value
+    amoledModeNotifier.value = settingsBox.get('amoledMode', defaultValue: false);
   }
 
   // Settings
@@ -27,6 +31,14 @@ class HiveService {
 
   static String get audioQuality => settingsBox.get('audioQuality', defaultValue: 'LOSSLESS');
   static Future<void> setAudioQuality(String quality) => settingsBox.put('audioQuality', quality);
+
+  static final ValueNotifier<bool> amoledModeNotifier = ValueNotifier<bool>(settingsBox.get('amoledMode', defaultValue: false));
+  
+  static bool get amoledMode => amoledModeNotifier.value;
+  static Future<void> setAmoledMode(bool enabled) async {
+    await settingsBox.put('amoledMode', enabled);
+    amoledModeNotifier.value = enabled;
+  }
 
   // Likes
   static Box get likesBox => Hive.box(boxLikes);
@@ -66,6 +78,50 @@ class HiveService {
   
   static Future<void> removeDownload(String trackId) async {
     await downloadsBox.delete(trackId);
+  }
+
+  // Playlists
+  static Box get playlistsBox => Hive.box(boxPlaylists);
+
+  static List<Playlist> getPlaylists() {
+    try {
+      return playlistsBox.values
+          .where((e) => e is Map)
+          .map((e) {
+            try {
+              return Playlist.fromJson(Map<String, dynamic>.from(e));
+            } catch (err) {
+              print("Error parsing playlist: $err");
+              return null;
+            }
+          })
+          .whereType<Playlist>()
+          .toList();
+    } catch (e) {
+      print("Error loading playlists: $e");
+      return [];
+    }
+  }
+
+  static Playlist? getPlaylist(String playlistId) {
+    try {
+      final data = playlistsBox.get(playlistId);
+      if (data is Map) {
+        return Playlist.fromJson(Map<String, dynamic>.from(data));
+      }
+      return null;
+    } catch (e) {
+      print("Error loading playlist $playlistId: $e");
+      return null;
+    }
+  }
+
+  static Future<void> savePlaylist(Playlist playlist) async {
+    await playlistsBox.put(playlist.id, playlist.toJson());
+  }
+
+  static Future<void> deletePlaylist(String playlistId) async {
+    await playlistsBox.delete(playlistId);
   }
 
   // History
@@ -154,6 +210,47 @@ class HiveService {
       print("Error parsing recent artists: $e");
       return [];
     }
+  }
+
+  // Search History
+  static const String searchHistoryKey = 'search_history';
+
+  static List<String> getSearchHistory() {
+    final List<dynamic> history = historyBox.get(searchHistoryKey, defaultValue: []);
+    return history.map((e) => e.toString()).toList();
+  }
+
+  static Future<void> addToSearchHistory(String query) async {
+    if (query.trim().isEmpty) return;
+    
+    final List<dynamic> history = historyBox.get(searchHistoryKey, defaultValue: []);
+    final List<String> newHistory = history.map((e) => e.toString()).toList();
+    
+    // Remove if already exists
+    newHistory.remove(query.trim());
+    
+    // Add to beginning
+    newHistory.insert(0, query.trim());
+    
+    // Limit to 8 items
+    if (newHistory.length > 8) {
+      newHistory.removeRange(8, newHistory.length);
+    }
+    
+    await historyBox.put(searchHistoryKey, newHistory);
+  }
+
+  static Future<void> removeFromSearchHistory(String query) async {
+    final List<dynamic> history = historyBox.get(searchHistoryKey, defaultValue: []);
+    final List<String> newHistory = history.map((e) => e.toString()).toList();
+    
+    newHistory.remove(query.trim());
+    
+    await historyBox.put(searchHistoryKey, newHistory);
+  }
+
+  static Future<void> clearSearchHistory() async {
+    await historyBox.delete(searchHistoryKey);
   }
 
   static Future<void> clearAll() async {

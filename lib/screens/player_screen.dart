@@ -41,6 +41,172 @@ class _PlayerScreenState extends State<PlayerScreen> {
     return '$minutes:${seconds.toString().padLeft(2, '0')}';
   }
 
+  Future<String?> _promptForPlaylistName(BuildContext dialogContext) async {
+    final controller = TextEditingController();
+    final result = await showDialog<String>(
+      context: dialogContext,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('New playlist'),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            decoration: const InputDecoration(
+              hintText: 'Playlist name',
+            ),
+            textInputAction: TextInputAction.done,
+            onSubmitted: (_) => Navigator.of(context).pop(controller.text),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(context).pop(controller.text),
+              child: const Text('Create'),
+            ),
+          ],
+        );
+      },
+    );
+    final name = result?.trim();
+    return (name == null || name.isEmpty) ? null : name;
+  }
+
+  Future<void> _showAddToPlaylistMenu(
+    BuildContext context,
+    Track track,
+    LibraryProvider library,
+  ) async {
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) {
+        return Center(
+          child: Material(
+            type: MaterialType.card,
+            borderRadius: BorderRadius.circular(16),
+            color: const Color(0xFF1E1E1E),
+            child: Container(
+              constraints: const BoxConstraints(maxWidth: 400, maxHeight: 600),
+              child: Consumer<LibraryProvider>(
+                builder: (context, lib, _) {
+                  return Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Row(
+                          children: [
+                            const Expanded(
+                              child: Text(
+                                'Add to playlist',
+                                style: TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.close),
+                              onPressed: () => Navigator.of(context).pop(),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Flexible(
+                        child: ListView(
+                          shrinkWrap: true,
+                          children: [
+                            ListTile(
+                              leading: const Icon(Icons.add, color: Colors.white),
+                              title: const Text('New playlist', style: TextStyle(color: Colors.white)),
+                              onTap: () async {
+                                Navigator.of(context).pop();
+                                final name = await _promptForPlaylistName(context);
+                                if (name == null) return;
+
+                                try {
+                                  final playlist = await library.createPlaylist(name);
+                                  await library.addTrackToPlaylist(playlist.id, track);
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(content: Text('Added to "${playlist.name}"')),
+                                    );
+                                  }
+                                } catch (e) {
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(content: Text('Failed: $e')),
+                                    );
+                                  }
+                                }
+                              },
+                            ),
+                            if (lib.playlists.isEmpty)
+                              const Padding(
+                                padding: EdgeInsets.all(16),
+                                child: Text(
+                                  'No playlists yet',
+                                  style: TextStyle(color: Colors.grey),
+                                ),
+                              )
+                            else
+                              ...lib.playlists.map(
+                                (p) {
+                                  final isInPlaylist = library.isTrackInPlaylist(p.id, track.id);
+                                  return ListTile(
+                                    leading: Icon(
+                                      isInPlaylist ? Icons.check_circle : Icons.queue_music,
+                                      color: isInPlaylist ? Theme.of(context).primaryColor : Colors.white,
+                                    ),
+                                    title: Text(p.name, style: const TextStyle(color: Colors.white)),
+                                    subtitle: Text(
+                                      '${p.tracks.length} tracks',
+                                      style: const TextStyle(color: Colors.grey),
+                                    ),
+                                    onTap: () async {
+                                      Navigator.of(context).pop();
+                                      try {
+                                        final wasAdded = await library.toggleTrackInPlaylist(p.id, track);
+                                        if (context.mounted) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(
+                                              content: Text(
+                                                wasAdded
+                                                    ? 'Added to "${p.name}"'
+                                                    : 'Removed from "${p.name}"',
+                                              ),
+                                            ),
+                                          );
+                                        }
+                                      } catch (e) {
+                                        if (context.mounted) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(content: Text('Failed: $e')),
+                                          );
+                                        }
+                                      }
+                                    },
+                                  );
+                                },
+                              ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Consumer2<PlayerProvider, LibraryProvider>(
@@ -71,9 +237,87 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 onPressed: () => setState(() => _showStats = !_showStats),
                 tooltip: "Stats for Nerds",
               ),
-              IconButton(
+              PopupMenuButton<String>(
                 icon: const Icon(Icons.more_vert),
-                onPressed: () {},
+                onOpened: () {
+                  // Hide mini player when menu opens
+                  player.setMiniPlayerHidden(true);
+                },
+                onCanceled: () {
+                  // Show mini player again when menu is canceled
+                  player.setMiniPlayerHidden(false);
+                },
+                onSelected: (value) async {
+                  // Show mini player again after selection
+                  player.setMiniPlayerHidden(false);
+                  
+                  if (value == 'add_to_playlist') {
+                    // Close player first
+                    Navigator.of(context).pop();
+                    // Show playlist selection menu
+                    await _showAddToPlaylistMenu(context, track, library);
+                    // Return to player after selection
+                    if (context.mounted && player.currentTrack != null) {
+                      Navigator.of(context).push(
+                        PageRouteBuilder(
+                          settings: const RouteSettings(name: 'PlayerScreen'),
+                          pageBuilder: (context, animation, secondaryAnimation) => const PlayerScreen(),
+                          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                            const begin = Offset(0.0, 1.0);
+                            const end = Offset.zero;
+                            const curve = Curves.easeOutCubic;
+                            var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+                            return SlideTransition(position: animation.drive(tween), child: child);
+                          },
+                        ),
+                      );
+                    }
+                  } else if (value == 'download') {
+                    if (!isDownloaded) {
+                      try {
+                        await DownloadService.downloadTrack(
+                          track, 
+                          onProgress: (received, total) {}
+                        );
+                        if (context.mounted) {
+                          library.refreshDownloads();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text("Download Started"))
+                          );
+                        }
+                      } catch (e) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text("Error: $e"))
+                          );
+                        }
+                      }
+                    }
+                  }
+                },
+                itemBuilder: (context) => [
+                  const PopupMenuItem(
+                    value: 'add_to_playlist',
+                    child: Row(
+                      children: [
+                        Icon(Icons.playlist_add),
+                        SizedBox(width: 8),
+                        Text('Add to playlist'),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'download',
+                    enabled: !isDownloaded,
+                    child: Row(
+                      children: [
+                        Icon(isDownloaded ? Icons.download_done : Icons.download),
+                        const SizedBox(width: 8),
+                        Text(isDownloaded ? 'Downloaded' : 'Download'),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -160,13 +404,55 @@ class _PlayerScreenState extends State<PlayerScreen> {
                               ],
                             ),
                           ),
-                          IconButton(
-                            icon: Icon(
-                              isLiked ? Icons.favorite : Icons.favorite_border,
-                              color: isLiked ? Theme.of(context).primaryColor : Colors.white,
-                              size: 28,
-                            ),
-                            onPressed: () => library.toggleLike(track),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                tooltip: _showLyrics ? 'Hide lyrics' : 'Show lyrics',
+                                icon: Icon(
+                                  Icons.lyrics_outlined,
+                                  color: (_showLyrics && player.currentLyrics != null) 
+                                      ? Theme.of(context).primaryColor 
+                                      : Colors.white.withOpacity(0.7),
+                                  size: 28,
+                                ),
+                                onPressed: () {
+                                  if (player.currentLyrics == null) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text("Lyrics not available for this track"),
+                                        duration: Duration(seconds: 2),
+                                      ),
+                                    );
+                                    return;
+                                  }
+                                  setState(() => _showLyrics = !_showLyrics);
+                                },
+                              ),
+                              IconButton(
+                                tooltip: isLiked ? 'Remove from liked' : 'Add to liked',
+                                icon: Icon(
+                                  isLiked ? Icons.favorite : Icons.favorite_border,
+                                  color: isLiked ? Theme.of(context).primaryColor : Colors.white,
+                                  size: 28,
+                                ),
+                                onPressed: () async {
+                                  await library.toggleLike(track);
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                          library.isLiked(track.id)
+                                              ? 'Added to favorites!'
+                                              : 'Removed from favorites',
+                                        ),
+                                        duration: const Duration(seconds: 2),
+                                      ),
+                                    );
+                                  }
+                                },
+                              ),
+                            ],
                           ),
                         ],
                       ),
@@ -225,21 +511,18 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           IconButton(
-                            icon: Icon(
-                              Icons.lyrics_outlined,
-                              color: (_showLyrics && player.currentLyrics != null) ? Theme.of(context).primaryColor : Colors.white.withOpacity(0.6),
-                            ),
-                            onPressed: () {
-                              if (player.currentLyrics == null) {
+                            tooltip: 'Play random track',
+                            icon: const Icon(Icons.shuffle, size: 28, color: Colors.white),
+                            onPressed: () async {
+                              await player.playRandomTrack();
+                              if (context.mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   const SnackBar(
-                                    content: Text("Lyrics not available for this track"),
+                                    content: Text('Playing random track'),
                                     duration: Duration(seconds: 2),
                                   ),
                                 );
-                                return;
                               }
-                              setState(() => _showLyrics = !_showLyrics);
                             },
                           ),
                           IconButton(
@@ -252,26 +535,39 @@ class _PlayerScreenState extends State<PlayerScreen> {
                             onPressed: () => player.next(),
                           ),
                           IconButton(
+                            tooltip: player.loopMode == 0 
+                                ? 'Loop off' 
+                                : player.loopMode == 1 
+                                    ? 'Loop track' 
+                                    : 'Loop playlist',
                             icon: Icon(
-                              isDownloaded ? Icons.download_done : Icons.download,
-                              color: isDownloaded ? Theme.of(context).primaryColor : Colors.white.withOpacity(0.6),
+                              player.loopMode == 1 
+                                  ? Icons.repeat_one 
+                                  : Icons.repeat,
+                              size: 28,
+                              color: player.loopMode == 0 
+                                  ? Colors.white.withOpacity(0.6)
+                                  : Theme.of(context).primaryColor,
                             ),
-                              onPressed: isDownloaded ? null : () async {
-                                try {
-                                  await DownloadService.downloadTrack(
-                                    track, 
-                                    onProgress: (received, total) {}
-                                  );
-                                  if (context.mounted) {
-                                    library.refreshDownloads();
-                                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Download Started")));
-                                  }
-                                } catch (e) {
-                                  if (context.mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
-                                  }
+                            onPressed: () async {
+                              await player.toggleLoopMode();
+                              if (context.mounted) {
+                                String message;
+                                if (player.loopMode == 1) {
+                                  message = 'Looping track';
+                                } else if (player.loopMode == 2) {
+                                  message = 'Looping playlist';
+                                } else {
+                                  message = 'Loop off';
                                 }
-                              },
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(message),
+                                    duration: const Duration(seconds: 2),
+                                  ),
+                                );
+                              }
+                            },
                           ),
                         ],
                       ),

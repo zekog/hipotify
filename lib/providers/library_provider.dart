@@ -26,6 +26,9 @@ class LibraryProvider with ChangeNotifier {
         .whereType<Track>()
         .toList();
 
+    // Load playlists
+    _playlists = HiveService.getPlaylists();
+
     notifyListeners();
   }
 
@@ -39,6 +42,125 @@ class LibraryProvider with ChangeNotifier {
   }
 
   Future<void> refreshDownloads() async {
+    _loadLibrary();
+  }
+
+  Playlist? getPlaylistById(String playlistId) {
+    try {
+      return _playlists.firstWhere((p) => p.id == playlistId);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<Playlist> createPlaylist(String name) async {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) {
+      throw Exception('Playlist name cannot be empty');
+    }
+
+    final playlist = Playlist(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      name: trimmed,
+      tracks: const [],
+    );
+    await HiveService.savePlaylist(playlist);
+    _loadLibrary();
+    return playlist;
+  }
+
+  Future<void> deletePlaylist(String playlistId) async {
+    await HiveService.deletePlaylist(playlistId);
+    _loadLibrary();
+  }
+
+  Future<void> updatePlaylist(Playlist playlist) async {
+    await HiveService.savePlaylist(playlist);
+    _loadLibrary();
+  }
+
+  Future<void> reorderPlaylistTracks(String playlistId, int oldIndex, int newIndex) async {
+    final playlist = HiveService.getPlaylist(playlistId) ?? getPlaylistById(playlistId);
+    if (playlist == null) {
+      throw Exception('Playlist not found');
+    }
+
+    if (oldIndex < newIndex) {
+      newIndex -= 1;
+    }
+
+    final tracks = List<Track>.from(playlist.tracks);
+    final track = tracks.removeAt(oldIndex);
+    tracks.insert(newIndex, track);
+
+    final updated = Playlist(
+      id: playlist.id,
+      name: playlist.name,
+      tracks: tracks,
+    );
+
+    await HiveService.savePlaylist(updated);
+    _loadLibrary();
+  }
+
+  Future<void> addTrackToPlaylist(String playlistId, Track track) async {
+    final playlist = HiveService.getPlaylist(playlistId) ?? getPlaylistById(playlistId);
+    if (playlist == null) {
+      throw Exception('Playlist not found');
+    }
+
+    final exists = playlist.tracks.any((t) => t.id == track.id);
+    if (exists) return;
+
+    final updated = Playlist(
+      id: playlist.id,
+      name: playlist.name,
+      tracks: [...playlist.tracks, track],
+    );
+
+    await HiveService.savePlaylist(updated);
+    _loadLibrary();
+  }
+
+  Future<bool> toggleTrackInPlaylist(String playlistId, Track track) async {
+    final playlist = HiveService.getPlaylist(playlistId) ?? getPlaylistById(playlistId);
+    if (playlist == null) {
+      throw Exception('Playlist not found');
+    }
+
+    final exists = playlist.tracks.any((t) => t.id == track.id);
+    final updated = Playlist(
+      id: playlist.id,
+      name: playlist.name,
+      tracks: exists
+          ? playlist.tracks.where((t) => t.id != track.id).toList()
+          : [...playlist.tracks, track],
+    );
+
+    await HiveService.savePlaylist(updated);
+    _loadLibrary();
+    return !exists; // Return true if added, false if removed
+  }
+
+  bool isTrackInPlaylist(String playlistId, String trackId) {
+    final playlist = getPlaylistById(playlistId);
+    if (playlist == null) return false;
+    return playlist.tracks.any((t) => t.id == trackId);
+  }
+
+  Future<void> removeTrackFromPlaylist(String playlistId, String trackId) async {
+    final playlist = HiveService.getPlaylist(playlistId) ?? getPlaylistById(playlistId);
+    if (playlist == null) {
+      throw Exception('Playlist not found');
+    }
+
+    final updated = Playlist(
+      id: playlist.id,
+      name: playlist.name,
+      tracks: playlist.tracks.where((t) => t.id != trackId).toList(),
+    );
+
+    await HiveService.savePlaylist(updated);
     _loadLibrary();
   }
 }

@@ -174,6 +174,7 @@ class _ArtistScreenState extends State<ArtistScreen> {
                         final track = _topTracks[index];
                         return TrackTile(
                           track: track,
+                          showMenu: true,
                           onTap: () {
                             Provider.of<PlayerProvider>(context, listen: false)
                                 .playPlaylist(_topTracks, initialIndex: index);

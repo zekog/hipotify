@@ -115,47 +115,52 @@ class _MyAppState extends State<MyApp> {
         ChangeNotifierProvider(create: (_) => PlayerProvider()),
         ChangeNotifierProvider(create: (_) => LibraryProvider()),
       ],
-      child: MaterialApp(
-        navigatorKey: navigatorKey,
-        navigatorObservers: [playerObserver],
-        title: 'Hipotify',
-        debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-          brightness: Brightness.dark,
-          scaffoldBackgroundColor: const Color(0xFF121212),
-          primaryColor: const Color(0xFF1DB954),
-          colorScheme: const ColorScheme.dark(
-            primary: Color(0xFF1DB954),
-            secondary: Color(0xFF1DB954),
-            surface: Color(0xFF121212),
-            background: Color(0xFF121212),
-          ),
-          bottomNavigationBarTheme: const BottomNavigationBarThemeData(
-            backgroundColor: Color(0xFF121212),
-            selectedItemColor: Colors.white,
-            unselectedItemColor: Colors.grey,
-            type: BottomNavigationBarType.fixed,
-          ),
-          textTheme: GoogleFonts.montserratTextTheme(
-            Theme.of(context).textTheme.apply(
-              bodyColor: Colors.white,
-              displayColor: Colors.white,
-            ),
-          ),
-          useMaterial3: true,
-        ),
-        home: const MainScreen(),
-        builder: (context, child) {
-          return Stack(
-            children: [
-              if (child != null) child,
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: kBottomNavigationBarHeight + MediaQuery.of(context).padding.bottom, 
-                child: MiniPlayer(),
+      child: ValueListenableBuilder<bool>(
+        valueListenable: HiveService.amoledModeNotifier,
+        builder: (context, amoledMode, _) {
+          return MaterialApp(
+            navigatorKey: navigatorKey,
+            navigatorObservers: [playerObserver],
+            title: 'Hipotify',
+            debugShowCheckedModeBanner: false,
+            theme: ThemeData(
+              brightness: Brightness.dark,
+              scaffoldBackgroundColor: amoledMode ? Colors.black : const Color(0xFF121212),
+              primaryColor: const Color(0xFF1DB954),
+              colorScheme: ColorScheme.dark(
+                primary: const Color(0xFF1DB954),
+                secondary: const Color(0xFF1DB954),
+                surface: amoledMode ? Colors.black : const Color(0xFF121212),
+                background: amoledMode ? Colors.black : const Color(0xFF121212),
               ),
-            ],
+              bottomNavigationBarTheme: BottomNavigationBarThemeData(
+                backgroundColor: amoledMode ? Colors.black : const Color(0xFF121212),
+                selectedItemColor: Colors.white,
+                unselectedItemColor: Colors.grey,
+                type: BottomNavigationBarType.fixed,
+              ),
+              textTheme: GoogleFonts.montserratTextTheme(
+                Theme.of(context).textTheme.apply(
+                  bodyColor: Colors.white,
+                  displayColor: Colors.white,
+                ),
+              ),
+              useMaterial3: true,
+            ),
+            home: const MainScreen(),
+            builder: (context, child) {
+              return Stack(
+                children: [
+                  if (child != null) child,
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: kBottomNavigationBarHeight + MediaQuery.of(context).padding.bottom, 
+                    child: MiniPlayer(),
+                  ),
+                ],
+              );
+            },
           );
         },
       ),
