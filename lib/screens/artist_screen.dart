@@ -1,3 +1,5 @@
+import 'dart:ui';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../models/artist.dart';
@@ -7,7 +9,10 @@ import '../services/api_service.dart';
 import '../widgets/track_tile.dart';
 import 'package:provider/provider.dart';
 import '../providers/player_provider.dart';
+import '../utils/snackbar_helper.dart';
+import '../main.dart';
 import 'album_screen.dart';
+import 'main_screen.dart';
 
 class ArtistScreen extends StatefulWidget {
   final String artistId;
@@ -29,6 +34,10 @@ class _ArtistScreenState extends State<ArtistScreen> {
     _fetchData();
   }
 
+  void _navigateToMainScreen(int index) {
+    BottomNavBarState.navigateToMainScreen(context, index);
+  }
+
   Future<void> _fetchData() async {
     try {
       final artist = await ApiService.getArtistDetails(widget.artistId);
@@ -46,9 +55,7 @@ class _ArtistScreenState extends State<ArtistScreen> {
     } catch (e) {
       print("Error fetching artist data: $e");
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Error: $e")),
-        );
+        showSnackBar(context, "Error: $e");
       }
       setState(() => _isLoading = false);
     }
@@ -76,6 +83,7 @@ class _ArtistScreenState extends State<ArtistScreen> {
     }
 
     return Scaffold(
+      // Bottom navigation bar is now global in MaterialApp builder
       body: CustomScrollView(
         slivers: [
           SliverAppBar(
@@ -182,7 +190,8 @@ class _ArtistScreenState extends State<ArtistScreen> {
                         );
                       },
                     ),
-                    const SizedBox(height: 24),
+                    // Add bottom padding to prevent overlap with bottom navigation bar
+                    SizedBox(height: kBottomNavigationBarHeight + MediaQuery.of(context).padding.bottom),
                   ],
                 ],
               ),

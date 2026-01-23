@@ -9,6 +9,7 @@ import '../providers/library_provider.dart';
 import '../services/download_service.dart';
 import '../models/track.dart';
 import '../widgets/lyrics_viewer.dart';
+import '../utils/snackbar_helper.dart';
 import 'artist_screen.dart';
 
 class PlayerScreen extends StatefulWidget {
@@ -132,15 +133,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                   final playlist = await library.createPlaylist(name);
                                   await library.addTrackToPlaylist(playlist.id, track);
                                   if (context.mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(content: Text('Added to "${playlist.name}"')),
-                                    );
+                                    showSnackBar(context, 'Added to "${playlist.name}"');
                                   }
                                 } catch (e) {
                                   if (context.mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(content: Text('Failed: $e')),
-                                    );
+                                    showSnackBar(context, 'Failed: $e');
                                   }
                                 }
                               },
@@ -172,21 +169,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                       try {
                                         final wasAdded = await library.toggleTrackInPlaylist(p.id, track);
                                         if (context.mounted) {
-                                          ScaffoldMessenger.of(context).showSnackBar(
-                                            SnackBar(
-                                              content: Text(
-                                                wasAdded
-                                                    ? 'Added to "${p.name}"'
-                                                    : 'Removed from "${p.name}"',
-                                              ),
-                                            ),
+                                          showSnackBar(
+                                            context,
+                                            wasAdded
+                                                ? 'Added to "${p.name}"'
+                                                : 'Removed from "${p.name}"',
                                           );
                                         }
                                       } catch (e) {
                                         if (context.mounted) {
-                                          ScaffoldMessenger.of(context).showSnackBar(
-                                            SnackBar(content: Text('Failed: $e')),
-                                          );
+                                          showSnackBar(context, 'Failed: $e');
                                         }
                                       }
                                     },
@@ -281,15 +273,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         );
                         if (context.mounted) {
                           library.refreshDownloads();
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text("Download Started"))
-                          );
+                          showSnackBar(context, "Download Started");
                         }
                       } catch (e) {
                         if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text("Error: $e"))
-                          );
+                          showSnackBar(context, "Error: $e");
                         }
                       }
                     }
@@ -418,12 +406,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                 ),
                                 onPressed: () {
                                   if (player.currentLyrics == null) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text("Lyrics not available for this track"),
-                                        duration: Duration(seconds: 2),
-                                      ),
-                                    );
+                                    showSnackBar(context, "Lyrics not available for this track");
                                     return;
                                   }
                                   setState(() => _showLyrics = !_showLyrics);
@@ -439,15 +422,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                 onPressed: () async {
                                   await library.toggleLike(track);
                                   if (context.mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(
-                                          library.isLiked(track.id)
-                                              ? 'Added to favorites!'
-                                              : 'Removed from favorites',
-                                        ),
-                                        duration: const Duration(seconds: 2),
-                                      ),
+                                    showSnackBar(
+                                      context,
+                                      library.isLiked(track.id)
+                                          ? 'Added to favorites!'
+                                          : 'Removed from favorites',
                                     );
                                   }
                                 },
@@ -516,12 +495,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                             onPressed: () async {
                               await player.playRandomTrack();
                               if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Playing random track'),
-                                    duration: Duration(seconds: 2),
-                                  ),
-                                );
+                                showSnackBar(context, 'Playing random track');
                               }
                             },
                           ),
@@ -560,12 +534,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                 } else {
                                   message = 'Loop off';
                                 }
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(message),
-                                    duration: const Duration(seconds: 2),
-                                  ),
-                                );
+                                showSnackBar(context, message);
                               }
                             },
                           ),

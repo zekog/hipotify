@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -14,6 +15,12 @@ import 'screens/player_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // Lock orientation to portrait only
+  await SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+    DeviceOrientation.portraitDown,
+  ]);
   
   await JustAudioBackground.init(
     androidNotificationChannelId: 'com.ryanheise.audioservice.notification',
@@ -31,6 +38,20 @@ Future<void> main() async {
 }
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+final GlobalKey miniPlayerKey = GlobalKey();
+
+// Global bottom navigation bar state
+class BottomNavBarState {
+  static final ValueNotifier<int> currentIndex = ValueNotifier<int>(0);
+  
+  static void navigateToMainScreen(BuildContext context, int index) {
+    currentIndex.value = index;
+    navigatorKey.currentState?.pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => MainScreen(initialIndex: index)),
+      (route) => false,
+    );
+  }
+}
 
 class MiniPlayerVisibilityObserver extends NavigatorObserver {
   static final ValueNotifier<bool> isPlayerVisible = ValueNotifier(false);
@@ -55,6 +76,105 @@ class MiniPlayerVisibilityObserver extends NavigatorObserver {
 
 final MiniPlayerVisibilityObserver playerObserver = MiniPlayerVisibilityObserver();
 
+// Global bottom navigation bar widget
+class _GlobalBottomNavBar extends StatefulWidget {
+  @override
+  State<_GlobalBottomNavBar> createState() => _GlobalBottomNavBarState();
+}
+
+class _GlobalBottomNavBarState extends State<_GlobalBottomNavBar> {
+  OverlayEntry? _overlayEntry;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _createOverlay();
+    });
+  }
+
+  void _createOverlay() {
+    final overlay = navigatorKey.currentState?.overlay;
+    if (overlay == null) return;
+
+    _overlayEntry = OverlayEntry(
+      builder: (context) => ValueListenableBuilder<bool>(
+        valueListenable: MiniPlayerVisibilityObserver.isPlayerVisible,
+        builder: (context, isPlayerVisible, _) {
+          if (isPlayerVisible) {
+            return const SizedBox.shrink(); // Hide on PlayerScreen
+          }
+          
+          return Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: ValueListenableBuilder<int>(
+              valueListenable: BottomNavBarState.currentIndex,
+              builder: (context, currentIndex, _) {
+                return Material(
+                  color: Colors.transparent,
+                  child: ClipRRect(
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                      child: Container(
+                        height: kBottomNavigationBarHeight + MediaQuery.of(context).padding.bottom,
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.5),
+                        ),
+                        child: SafeArea(
+                          top: false,
+                          child: BottomNavigationBar(
+                            currentIndex: currentIndex,
+                            onTap: (index) {
+                              BottomNavBarState.currentIndex.value = index;
+                              navigatorKey.currentState?.pushAndRemoveUntil(
+                                MaterialPageRoute(
+                                  builder: (_) => MainScreen(initialIndex: index),
+                                ),
+                                (route) => route.settings.name == 'PlayerScreen' ? true : false,
+                              );
+                            },
+                            backgroundColor: Colors.transparent,
+                            elevation: 0,
+                            type: BottomNavigationBarType.fixed,
+                            selectedItemColor: Theme.of(context).primaryColor,
+                            unselectedItemColor: Colors.white.withOpacity(0.5),
+                            items: const [
+                              BottomNavigationBarItem(icon: Icon(Icons.home_filled), label: 'Home'),
+                              BottomNavigationBarItem(icon: Icon(Icons.search), label: 'Search'),
+                              BottomNavigationBarItem(icon: Icon(Icons.library_music), label: 'Library'),
+                              BottomNavigationBarItem(icon: Icon(Icons.download), label: 'Download'),
+                              BottomNavigationBarItem(icon: Icon(Icons.settings), label: 'Settings'),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          );
+        },
+      ),
+    );
+
+    overlay.insert(_overlayEntry!);
+  }
+
+  @override
+  void dispose() {
+    _overlayEntry?.remove();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return const SizedBox.shrink(); // This widget doesn't render anything itself
+  }
+}
+
 class MyApp extends StatefulWidget {
   const MyApp({super.key});
 
@@ -67,6 +187,18 @@ class _MyAppState extends State<MyApp> {
   void initState() {
     super.initState();
     _initIntentListener();
+  }
+
+  @override
+  void dispose() {
+    // Reset orientation preferences when app is disposed
+    SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.portraitDown,
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
+    super.dispose();
   }
 
   Future<void> _initIntentListener() async {
@@ -152,11 +284,14 @@ class _MyAppState extends State<MyApp> {
               return Stack(
                 children: [
                   if (child != null) child,
+                  // Global bottom navigation bar using Overlay
+                  _GlobalBottomNavBar(),
+                  // Mini player - positioned above bottom navigation bar
                   Positioned(
                     left: 0,
                     right: 0,
                     bottom: kBottomNavigationBarHeight + MediaQuery.of(context).padding.bottom, 
-                    child: MiniPlayer(),
+                    child: MiniPlayer(key: miniPlayerKey),
                   ),
                 ],
               );

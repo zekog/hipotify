@@ -4,6 +4,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:provider/provider.dart';
 import '../providers/player_provider.dart';
 import '../services/hive_service.dart';
+import '../main.dart';
 import 'home_screen.dart';
 import 'search_screen.dart';
 import 'library_screen.dart';
@@ -27,6 +28,8 @@ class _MainScreenState extends State<MainScreen> {
   void initState() {
     super.initState();
     _currentIndex = widget.initialIndex ?? 0;
+    // Sync with global bottom nav bar state
+    BottomNavBarState.currentIndex.value = _currentIndex;
     // Check if API URL is set on startup
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (HiveService.apiUrl == null || HiveService.apiUrl!.isEmpty) {
@@ -65,6 +68,8 @@ class _MainScreenState extends State<MainScreen> {
 
   void _onItemTapped(int index) {
     setState(() => _currentIndex = index);
+    // Sync with global bottom nav bar state
+    BottomNavBarState.currentIndex.value = index;
     // Hide MiniPlayer on Download tab (index 3)
     Provider.of<PlayerProvider>(context, listen: false).setMiniPlayerHidden(index == 3);
     
@@ -94,27 +99,7 @@ class _MainScreenState extends State<MainScreen> {
         index: _currentIndex,
         children: _screens,
       ),
-      bottomNavigationBar: ClipRRect(
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-          child: BottomNavigationBar(
-            currentIndex: _currentIndex,
-            onTap: _onItemTapped,
-            backgroundColor: Colors.black.withOpacity(0.5),
-            elevation: 0,
-            type: BottomNavigationBarType.fixed,
-            selectedItemColor: Theme.of(context).primaryColor,
-            unselectedItemColor: Colors.white.withOpacity(0.5),
-            items: const [
-              BottomNavigationBarItem(icon: Icon(Icons.home_filled), label: 'Home'),
-              BottomNavigationBarItem(icon: Icon(Icons.search), label: 'Search'),
-              BottomNavigationBarItem(icon: Icon(Icons.library_music), label: 'Library'),
-              BottomNavigationBarItem(icon: Icon(Icons.download), label: 'Download'),
-              BottomNavigationBarItem(icon: Icon(Icons.settings), label: 'Settings'),
-            ],
-          ),
-        ),
-      ),
+      // Bottom navigation bar is now global in MaterialApp builder
     );
   }
 

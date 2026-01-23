@@ -11,6 +11,7 @@ import '../models/track.dart';
 import '../models/playlist.dart';
 import '../widgets/track_tile.dart';
 import '../widgets/playlist_cover_grid.dart';
+import '../utils/snackbar_helper.dart';
 import '../main.dart';
 import 'main_screen.dart';
 
@@ -31,38 +32,6 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
     super.dispose();
   }
 
-  EdgeInsets _getSnackBarMargin(BuildContext context) {
-    final player = Provider.of<PlayerProvider>(context, listen: false);
-    final isPlayerVisible = MiniPlayerVisibilityObserver.isPlayerVisible.value;
-    final isMiniPlayerVisible = player.currentTrack != null && 
-                                !isPlayerVisible && 
-                                !player.isMiniPlayerHidden;
-    
-    if (isMiniPlayerVisible) {
-      return EdgeInsets.only(
-        bottom: MediaQuery.of(context).padding.bottom + 80,
-        left: 8,
-        right: 8,
-      );
-    } else {
-      return EdgeInsets.only(
-        bottom: MediaQuery.of(context).padding.bottom,
-        left: 8,
-        right: 8,
-      );
-    }
-  }
-
-  void _showSnackBar(BuildContext context, String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        margin: _getSnackBarMargin(context),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-  }
-
   String _formatDuration(int totalSeconds) {
     final hours = totalSeconds ~/ 3600;
     final minutes = (totalSeconds % 3600) ~/ 60;
@@ -75,12 +44,13 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
   }
 
   void _navigateToMainScreen(int index) {
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(
-        builder: (context) => MainScreen(initialIndex: index),
-      ),
-      (route) => false,
-    );
+    if (index == 2) {
+      // Library - just pop back
+      Navigator.of(context).pop();
+    } else {
+      // Other screens - navigate to MainScreen
+      BottomNavBarState.navigateToMainScreen(context, index);
+    }
   }
 
   Future<void> _renamePlaylist(BuildContext context, LibraryProvider library, String currentName) async {
@@ -119,22 +89,12 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
           final updated = playlist.copyWith(name: newName);
           await library.updatePlaylist(updated);
           if (context.mounted) {
-            _showSnackBar(context, 'Playlist renamed to "$newName"');
+            showSnackBar(context, 'Playlist renamed to "$newName"');
           }
         }
       } catch (e) {
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Failed to rename: $e'),
-              margin: EdgeInsets.only(
-                bottom: MediaQuery.of(context).padding.bottom + 80,
-                left: 8,
-                right: 8,
-              ),
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
+          showSnackBar(context, 'Failed to rename: $e');
         }
       }
     }
@@ -206,11 +166,11 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
         setState(() {
           _menuRefreshNotifier.value++;
         });
-        _showSnackBar(context, 'Custom cover image set');
+        showSnackBar(context, 'Custom cover image set');
       }
     } catch (e) {
       if (context.mounted) {
-        _showSnackBar(context, 'Failed to set cover: $e');
+        showSnackBar(context, 'Failed to set cover: $e');
       }
     }
   }
@@ -255,11 +215,11 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
         setState(() {
           _menuRefreshNotifier.value++;
         });
-        _showSnackBar(context, 'Custom cover removed');
+        showSnackBar(context, 'Custom cover removed');
       }
     } catch (e) {
       if (context.mounted) {
-        _showSnackBar(context, 'Failed to remove cover: $e');
+        showSnackBar(context, 'Failed to remove cover: $e');
       }
     }
   }
@@ -314,35 +274,7 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
             : '';
 
         return Scaffold(
-          bottomNavigationBar: ClipRRect(
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-              child: BottomNavigationBar(
-                currentIndex: 2, // Library is selected
-                onTap: (index) {
-                  if (index == 2) {
-                    // Library - just pop back
-                    Navigator.of(context).pop();
-                  } else {
-                    // Other screens - navigate to MainScreen
-                    _navigateToMainScreen(index);
-                  }
-                },
-                backgroundColor: Colors.black.withOpacity(0.5),
-                elevation: 0,
-                type: BottomNavigationBarType.fixed,
-                selectedItemColor: Theme.of(context).primaryColor,
-                unselectedItemColor: Colors.white.withOpacity(0.5),
-                items: const [
-                  BottomNavigationBarItem(icon: Icon(Icons.home_filled), label: 'Home'),
-                  BottomNavigationBarItem(icon: Icon(Icons.search), label: 'Search'),
-                  BottomNavigationBarItem(icon: Icon(Icons.library_music), label: 'Library'),
-                  BottomNavigationBarItem(icon: Icon(Icons.download), label: 'Download'),
-                  BottomNavigationBarItem(icon: Icon(Icons.settings), label: 'Settings'),
-                ],
-              ),
-            ),
-          ),
+          // Bottom navigation bar is now global in MaterialApp builder
           body: CustomScrollView(
             slivers: [
               SliverAppBar(
@@ -581,7 +513,7 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
                                       onPressed: () async {
                                         await library.removeTrackFromPlaylist(playlist.id, track.id);
                                         if (!context.mounted) return;
-                                        _showSnackBar(context, 'Removed from "${playlist.name}"');
+                                        showSnackBar(context, 'Removed from "${playlist.name}"');
                                       },
                                     ),
                                     const Padding(
@@ -597,6 +529,8 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
                             );
                           },
                         ),
+                      // Add bottom padding to prevent overlap with bottom navigation bar
+                      SizedBox(height: kBottomNavigationBarHeight + MediaQuery.of(context).padding.bottom),
                     ],
                   ),
                 ),

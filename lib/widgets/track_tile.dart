@@ -5,7 +5,7 @@ import '../models/track.dart';
 import '../providers/library_provider.dart';
 import '../providers/player_provider.dart';
 import '../services/download_service.dart';
-import '../main.dart';
+import '../utils/snackbar_helper.dart';
 
 class TrackTile extends StatefulWidget {
   final Track track;
@@ -31,38 +31,6 @@ class TrackTile extends StatefulWidget {
 
 class _TrackTileState extends State<TrackTile> {
   bool _isFocused = false;
-
-  EdgeInsets _getSnackBarMargin(BuildContext context) {
-    final player = Provider.of<PlayerProvider>(context, listen: false);
-    final isPlayerVisible = MiniPlayerVisibilityObserver.isPlayerVisible.value;
-    final isMiniPlayerVisible = player.currentTrack != null && 
-                                !isPlayerVisible && 
-                                !player.isMiniPlayerHidden;
-    
-    if (isMiniPlayerVisible) {
-      return EdgeInsets.only(
-        bottom: MediaQuery.of(context).padding.bottom + 80,
-        left: 8,
-        right: 8,
-      );
-    } else {
-      return EdgeInsets.only(
-        bottom: MediaQuery.of(context).padding.bottom,
-        left: 8,
-        right: 8,
-      );
-    }
-  }
-
-  void _showSnackBar(BuildContext context, String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        margin: _getSnackBarMargin(context),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-  }
 
   Future<void> _showAddToPlaylistSheet() async {
     final library = Provider.of<LibraryProvider>(context, listen: false);
@@ -92,11 +60,11 @@ class _TrackTileState extends State<TrackTile> {
                         final playlist = await library.createPlaylist(name);
                         await library.addTrackToPlaylist(playlist.id, widget.track);
                         if (mounted) {
-                          _showSnackBar(this.context, 'Added to "${playlist.name}"');
+                          showSnackBar(this.context, 'Added to "${playlist.name}"');
                         }
                       } catch (e) {
                         if (mounted) {
-                          _showSnackBar(this.context, 'Failed: $e');
+                          showSnackBar(this.context, 'Failed: $e');
                         }
                       }
                     },
@@ -119,7 +87,7 @@ class _TrackTileState extends State<TrackTile> {
                             try {
                               final wasAdded = await library.toggleTrackInPlaylist(p.id, widget.track);
                               if (mounted) {
-                                _showSnackBar(
+                                showSnackBar(
                                   this.context,
                                   wasAdded
                                       ? 'Added to "${p.name}"'
@@ -128,7 +96,7 @@ class _TrackTileState extends State<TrackTile> {
                               }
                             } catch (e) {
                               if (mounted) {
-                                _showSnackBar(this.context, 'Failed: $e');
+                                showSnackBar(this.context, 'Failed: $e');
                               }
                             }
                           },
@@ -191,7 +159,7 @@ class _TrackTileState extends State<TrackTile> {
             if (value == 'favorite') {
               await library.toggleLike(widget.track);
               if (mounted) {
-                _showSnackBar(
+                showSnackBar(
                   context,
                   library.isLiked(widget.track.id)
                       ? 'Added to favorites!'
@@ -208,11 +176,11 @@ class _TrackTileState extends State<TrackTile> {
                 );
                 if (mounted) {
                   library.refreshDownloads();
-                  _showSnackBar(context, 'Download started');
+                  showSnackBar(context, 'Download started');
                 }
               } catch (e) {
                 if (mounted) {
-                  _showSnackBar(context, 'Download failed: $e');
+                  showSnackBar(context, 'Download failed: $e');
                 }
               }
             }

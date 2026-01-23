@@ -9,6 +9,7 @@ import '../models/album.dart';
 import '../providers/player_provider.dart';
 import '../providers/library_provider.dart';
 import '../services/download_service.dart';
+import '../utils/snackbar_helper.dart';
 import 'artist_screen.dart';
 import 'album_screen.dart';
 
@@ -124,9 +125,7 @@ class _SearchScreenState extends State<SearchScreen> {
         if (results.isEmpty || results.length < _limit) _hasMore = false;
       });
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Search failed: $e')),
-      );
+      showSnackBar(context, 'Search failed: $e');
     } finally {
       setState(() => _isLoading = false);
     }
@@ -253,15 +252,11 @@ class _SearchScreenState extends State<SearchScreen> {
                                   final playlist = await library.createPlaylist(name);
                                   await library.addTrackToPlaylist(playlist.id, track);
                                   if (context.mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(content: Text('Added to "${playlist.name}"')),
-                                    );
+                                    showSnackBar(context, 'Added to "${playlist.name}"');
                                   }
                                 } catch (e) {
                                   if (context.mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(content: Text('Failed: $e')),
-                                    );
+                                    showSnackBar(context, 'Failed: $e');
                                   }
                                 }
                               },
@@ -293,21 +288,16 @@ class _SearchScreenState extends State<SearchScreen> {
                                       try {
                                         final wasAdded = await library.toggleTrackInPlaylist(p.id, track);
                                         if (context.mounted) {
-                                          ScaffoldMessenger.of(context).showSnackBar(
-                                            SnackBar(
-                                              content: Text(
-                                                wasAdded
-                                                    ? 'Added to "${p.name}"'
-                                                    : 'Removed from "${p.name}"',
-                                              ),
-                                            ),
+                                          showSnackBar(
+                                            context,
+                                            wasAdded
+                                                ? 'Added to "${p.name}"'
+                                                : 'Removed from "${p.name}"',
                                           );
                                         }
                                       } catch (e) {
                                         if (context.mounted) {
-                                          ScaffoldMessenger.of(context).showSnackBar(
-                                            SnackBar(content: Text('Failed: $e')),
-                                          );
+                                          showSnackBar(context, 'Failed: $e');
                                         }
                                       }
                                     },
@@ -359,6 +349,9 @@ class _SearchScreenState extends State<SearchScreen> {
                   ? _buildSearchHistory()
                   : ListView.builder(
                       controller: _scrollController,
+                      padding: EdgeInsets.only(
+                        bottom: kBottomNavigationBarHeight + MediaQuery.of(context).padding.bottom,
+                      ),
                       itemCount: _results.length + (_hasMore ? 1 : 0),
                       itemBuilder: (context, index) {
                         if (index == _results.length) {
@@ -436,14 +429,11 @@ class _SearchScreenState extends State<SearchScreen> {
                                 if (value == 'favorite') {
                                   await library.toggleLike(item);
                                   if (context.mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(
-                                          library.isLiked(item.id)
-                                              ? 'Added to favorites!'
-                                              : 'Removed from favorites',
-                                        ),
-                                      ),
+                                    showSnackBar(
+                                      context,
+                                      library.isLiked(item.id)
+                                          ? 'Added to favorites!'
+                                          : 'Removed from favorites',
                                     );
                                   }
                                 } else if (value == 'playlist') {
@@ -456,15 +446,11 @@ class _SearchScreenState extends State<SearchScreen> {
                                     );
                                     if (context.mounted) {
                                       library.refreshDownloads();
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(content: Text('Download started')),
-                                      );
+                                      showSnackBar(context, 'Download started');
                                     }
                                   } catch (e) {
                                     if (context.mounted) {
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(content: Text('Download failed: $e')),
-                                      );
+                                      showSnackBar(context, 'Download failed: $e');
                                     }
                                   }
                                 }

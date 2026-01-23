@@ -8,6 +8,7 @@ import '../models/track.dart';
 import '../widgets/responsive_layout.dart';
 import '../widgets/playlist_cover_grid.dart';
 import '../services/hive_service.dart';
+import '../utils/snackbar_helper.dart';
 import 'playlist_screen.dart';
 
 class LibraryScreen extends StatelessWidget {
@@ -108,9 +109,7 @@ class LibraryScreen extends StatelessWidget {
                                 await HiveService.removeDownload(track.id);
                                 library.refreshDownloads();
                                 if (context.mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('Download deleted')),
-                                  );
+                                  showSnackBar(context, 'Download deleted');
                                 }
                               },
                             ),
@@ -195,9 +194,7 @@ class _PlaylistsTab extends StatelessWidget {
                         await Provider.of<LibraryProvider>(context, listen: false).createPlaylist(name);
                       } catch (e) {
                         if (!context.mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Failed: $e')),
-                        );
+                        showSnackBar(context, 'Failed: $e');
                       }
                     },
                     icon: const Icon(Icons.add),
