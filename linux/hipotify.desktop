@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Hipotify
+Comment=A Spotify Clone for Android (and Linux).
+Exec=hipotify
+Icon=hipotify
+Terminal=false
+Categories=AudioVideo;Audio;Music;Player;
+Keywords=Music;Player;Spotify;

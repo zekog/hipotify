@@ -16,7 +16,7 @@ jobs:
       - name: Install Linux Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libx11-dev pkg-config cmake ninja-build libblkid-dev liblzma-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libgstreamer-plugins-bad1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-libav gstreamer1.0-tools gstreamer1.0-x gstreamer1.0-alsa gstreamer1.0-gl gstreamer1.0-gtk3 gstreamer1.0-qt5 gstreamer1.0-pulseaudio
+          sudo apt-get install -y libgtk-3-dev libx11-dev pkg-config cmake ninja-build libblkid-dev liblzma-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libgstreamer-plugins-bad1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-libav gstreamer1.0-tools gstreamer1.0-x gstreamer1.0-alsa gstreamer1.0-gl gstreamer1.0-gtk3 gstreamer1.0-qt5 gstreamer1.0-pulseaudio libfuse2
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -30,11 +30,45 @@ jobs:
       - name: Build Linux App
         run: flutter build linux --release
 
-      - name: Tar Build
-        run: tar -czf linux-app.tar.gz build/linux/x64/release/bundle
+      - name: Create AppDir
+        run: |
+          mkdir -p AppDir/usr/bin
+          mkdir -p AppDir/usr/share/applications
+          mkdir -p AppDir/usr/share/icons/hicolor/1024x1024/apps
+          
+          # Copy build output
+          cp -r build/linux/x64/release/bundle/* AppDir/usr/bin/
+          
+          # Copy desktop file and icon
+          cp linux/hipotify.desktop AppDir/usr/share/applications/
+          cp linux/hipotify.png AppDir/usr/share/icons/hicolor/1024x1024/apps/
+          cp linux/hipotify.png AppDir/
+          cp linux/hipotify.desktop AppDir/
+          
+          # Create AppRun
+          cat > AppDir/AppRun << 'EOF'
+          #!/bin/sh
+          SELF=$(readlink -f "$0")
+          HERE=$(dirname "$SELF")
+          export LD_LIBRARY_PATH="$HERE/usr/bin/lib:$LD_LIBRARY_PATH"
+          exec "$HERE/usr/bin/hipotify" "$@"
+          EOF
+          chmod +x AppDir/AppRun
 
-      - name: Upload Linux App
+      - name: Download appimagetool
+        run: |
+          wget -O appimagetool https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool
+
+      - name: Generate AppImage
+        run: |
+          export ARCH=x86_64
+          ./appimagetool AppDir Hipotify-x86_64.AppImage
+
+      - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: linux-app
-          path: linux-app.tar.gz
+          path: |
+            Hipotify-x86_64.AppImage
+            build/linux/x64/release/bundle
