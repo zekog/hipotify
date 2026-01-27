@@ -17,27 +17,37 @@ import 'screens/desktop_home_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  print("Main: Initializing...");
   
-  // Lock orientation to portrait only
-  await SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-    DeviceOrientation.portraitDown,
-  ]);
+  // Lock orientation to portrait only on mobile
+  if (Platform.isAndroid || Platform.isIOS) {
+    await SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.portraitDown,
+    ]);
+  }
   
+  print("Main: Initializing JustAudioMediaKit...");
   JustAudioMediaKit.ensureInitialized();
 
-  await JustAudioBackground.init(
-    androidNotificationChannelId: 'com.ryanheise.audioservice.notification',
-    androidNotificationChannelName: 'Audio playback',
-    androidNotificationOngoing: true,
-  );
+  if (Platform.isAndroid || Platform.isIOS) {
+    print("Main: Initializing JustAudioBackground...");
+    await JustAudioBackground.init(
+      androidNotificationChannelId: 'com.ryanheise.audioservice.notification',
+      androidNotificationChannelName: 'Audio playback',
+      androidNotificationOngoing: true,
+    );
+  }
   
   try {
+    print("Main: Initializing Hive...");
     await HiveService.init();
+    print("Main: Hive initialized.");
   } catch (e) {
-    print("Initialization error: $e");
+    print("Initialization error (Hive): $e");
   }
 
+  print("Main: Running App...");
   runApp(const MyApp());
 }
 
@@ -206,7 +216,10 @@ class _MyAppState extends State<MyApp> {
   }
 
   Future<void> _initIntentListener() async {
+    if (!Platform.isAndroid) return;
+    
     try {
+      print("MyApp: Initializing Intent Listener...");
       // Check initial intent
       final initialIntent = await ReceiveIntent.getInitialIntent();
       if (initialIntent != null && initialIntent.action == 'com.ryanheise.audioservice.NOTIFICATION_CLICK') {

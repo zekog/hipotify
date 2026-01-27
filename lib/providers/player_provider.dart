@@ -367,6 +367,9 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
   }
 
   void _initCast() async {
+    if (!Platform.isAndroid && !Platform.isIOS) return;
+    
+    print("PlayerProvider: Initializing Cast...");
     const appId = GoogleCastDiscoveryCriteria.kDefaultApplicationId;
     GoogleCastOptions? options;
     if (Platform.isIOS) {

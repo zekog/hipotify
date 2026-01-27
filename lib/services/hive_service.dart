@@ -13,7 +13,9 @@ class HiveService {
   static const String boxHistory = 'history';
 
   static Future<void> init() async {
+    print("HiveService: Initializing Hive...");
     await Hive.initFlutter();
+    print("HiveService: Opening boxes...");
     await Hive.openBox(boxSettings);
     await Hive.openBox(boxLikes);
     await Hive.openBox(boxDownloads);
@@ -21,6 +23,7 @@ class HiveService {
     await Hive.openBox(boxHistory);
     // Initialize AMOLED mode notifier with saved value
     amoledModeNotifier.value = settingsBox.get('amoledMode', defaultValue: false);
+    print("HiveService: Initialization complete.");
   }
 
   // Settings
