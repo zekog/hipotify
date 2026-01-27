@@ -4,6 +4,7 @@ class Album {
   final String artistName;
   final String artistId;
   final String coverUuid;
+  final String? type;
 
   Album({
     required this.id,
@@ -11,6 +12,7 @@ class Album {
     required this.artistName,
     required this.artistId,
     required this.coverUuid,
+    this.type,
   });
 
   factory Album.fromJson(Map<String, dynamic> json) {
@@ -35,6 +37,7 @@ class Album {
       artistName: artistName ?? 'Unknown Artist',
       artistId: artistId ?? '',
       coverUuid: json['coverUuid']?.toString() ?? json['cover']?.toString() ?? '',
+      type: json['type']?.toString(),
     );
   }
 

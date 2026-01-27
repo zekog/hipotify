@@ -8,12 +8,18 @@ class LyricsViewer extends StatefulWidget {
   final Lyrics lyrics;
   final Stream<Duration> positionStream;
   final Function(Duration) onSeek;
+  final TextAlign textAlign;
+  final TextStyle? textStyle;
+  final TextStyle? activeTextStyle;
 
   const LyricsViewer({
     super.key,
     required this.lyrics,
     required this.positionStream,
     required this.onSeek,
+    this.textAlign = TextAlign.center,
+    this.textStyle,
+    this.activeTextStyle,
   });
 
   @override
@@ -190,8 +196,12 @@ class _LyricsViewerState extends State<LyricsViewer> {
                     transformAlignment: Alignment.centerLeft,
                     child: Text(
                       line.text,
-                      textAlign: TextAlign.left,
-                      style: TextStyle(
+                      textAlign: widget.textAlign,
+                      style: (isCurrent ? (widget.activeTextStyle ?? widget.textStyle) : widget.textStyle)?.copyWith(
+                        fontSize: isCurrent ? (widget.activeTextStyle?.fontSize ?? 32) : (widget.textStyle?.fontSize ?? 26),
+                        color: isCurrent ? (widget.activeTextStyle?.color ?? Colors.white) : (widget.textStyle?.color ?? Colors.white).withOpacity(isPast ? 0.3 : 0.5),
+                        fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
+                      ) ?? TextStyle(
                         color: Colors.white,
                         fontSize: isCurrent ? 32 : 26,
                         fontWeight: FontWeight.bold,
@@ -240,7 +250,7 @@ class _LyricsViewerState extends State<LyricsViewer> {
       padding: const EdgeInsets.all(40),
       child: Text(
         widget.lyrics.lyrics ?? "No lyrics available",
-        textAlign: TextAlign.left,
+        textAlign: widget.textAlign,
         style: TextStyle(
           color: Colors.white.withOpacity(0.9),
           fontSize: 24,

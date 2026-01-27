@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:just_audio_background/just_audio_background.dart';
+import 'package:just_audio_media_kit/just_audio_media_kit.dart';
 import 'services/hive_service.dart';
 import 'providers/player_provider.dart';
 import 'providers/library_provider.dart';
@@ -12,6 +13,7 @@ import 'screens/main_screen.dart';
 import 'widgets/mini_player.dart';
 import 'package:receive_intent/receive_intent.dart';
 import 'screens/player_screen.dart';
+import 'screens/desktop_home_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -22,6 +24,8 @@ Future<void> main() async {
     DeviceOrientation.portraitDown,
   ]);
   
+  JustAudioMediaKit.ensureInitialized();
+
   await JustAudioBackground.init(
     androidNotificationChannelId: 'com.ryanheise.audioservice.notification',
     androidNotificationChannelName: 'Audio playback',
@@ -242,6 +246,8 @@ class _MyAppState extends State<MyApp> {
 
   @override
   Widget build(BuildContext context) {
+    final isDesktop = Platform.isLinux || Platform.isWindows || Platform.isMacOS;
+
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => PlayerProvider()),
@@ -279,8 +285,11 @@ class _MyAppState extends State<MyApp> {
               ),
               useMaterial3: true,
             ),
-            home: const MainScreen(),
+            home: isDesktop ? const DesktopHomeScreen() : const MainScreen(),
             builder: (context, child) {
+              if (isDesktop) {
+                return child!;
+              }
               return Stack(
                 children: [
                   if (child != null) child,

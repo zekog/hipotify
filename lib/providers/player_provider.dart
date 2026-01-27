@@ -170,8 +170,11 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
 
       _playlist = ConcatenatingAudioSource(children: [audioSource]);
       
+      print("PlayerProvider: Setting audio source: $urlString");
       await _player.setAudioSource(_playlist!);
+      print("PlayerProvider: Playing...");
       await _player.play();
+      print("PlayerProvider: Playback started");
       HiveService.addToHistory(_queue[_currentIndex]);
 
       // After playback starts, load neighbors

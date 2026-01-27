@@ -26,6 +26,7 @@ class _ArtistScreenState extends State<ArtistScreen> {
   Artist? _artist;
   List<Track> _topTracks = [];
   List<Album> _albums = [];
+  List<Album> _singles = [];
   bool _isLoading = true;
 
   @override
@@ -43,15 +44,16 @@ class _ArtistScreenState extends State<ArtistScreen> {
       final artist = await ApiService.getArtistDetails(widget.artistId);
       // Top tracks and albums are now fetched using more robust scanning
       final tracks = await ApiService.getArtistTopTracks(widget.artistId);
-      final albums = await ApiService.getArtistAlbums(widget.artistId);
+      final allAlbums = await ApiService.getArtistAlbums(widget.artistId);
       
       setState(() {
         _artist = artist;
         _topTracks = tracks;
-        _albums = albums;
+        _albums = allAlbums.where((a) => a.type?.toUpperCase() == 'ALBUM').toList();
+        _singles = allAlbums.where((a) => a.type?.toUpperCase() != 'ALBUM').toList();
         _isLoading = false;
       });
-      print("ArtistScreen: Found ${tracks.length} tracks and ${albums.length} albums for ${_artist?.name}");
+      print("ArtistScreen: Found ${tracks.length} tracks, ${_albums.length} albums, ${_singles.length} singles");
     } catch (e) {
       print("Error fetching artist data: $e");
       if (mounted) {
@@ -118,14 +120,35 @@ class _ArtistScreenState extends State<ArtistScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  if (_topTracks.isNotEmpty) ...[
+                    const Text("Top Tracks", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 16),
+                    ListView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: _topTracks.length > 10 ? 10 : _topTracks.length,
+                      itemBuilder: (context, index) {
+                        final track = _topTracks[index];
+                        return TrackTile(
+                          track: track,
+                          showMenu: true,
+                          onTap: () {
+                            Provider.of<PlayerProvider>(context, listen: false)
+                                .playPlaylist(_topTracks, initialIndex: index);
+                          },
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 32),
+                  ],
                   if (_albums.isNotEmpty) ...[
                     const Text("Albums", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 16),
                     GridView.builder(
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
-                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 2,
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: (MediaQuery.of(context).size.width / 180).floor().clamp(2, 8),
                         childAspectRatio: 0.8,
                         crossAxisSpacing: 16,
                         mainAxisSpacing: 16,
@@ -169,30 +192,63 @@ class _ArtistScreenState extends State<ArtistScreen> {
                         );
                       },
                     ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 32),
                   ],
-                  if (_topTracks.isNotEmpty) ...[
-                    const Text("Top Tracks", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                  if (_singles.isNotEmpty) ...[
+                    const Text("Singles & EPs", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 16),
-                    ListView.builder(
+                    GridView.builder(
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
-                      itemCount: _topTracks.length > 10 ? 10 : _topTracks.length,
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: (MediaQuery.of(context).size.width / 180).floor().clamp(2, 8),
+                        childAspectRatio: 0.8,
+                        crossAxisSpacing: 16,
+                        mainAxisSpacing: 16,
+                      ),
+                      itemCount: _singles.length,
                       itemBuilder: (context, index) {
-                        final track = _topTracks[index];
-                        return TrackTile(
-                          track: track,
-                          showMenu: true,
-                          onTap: () {
-                            Provider.of<PlayerProvider>(context, listen: false)
-                                .playPlaylist(_topTracks, initialIndex: index);
-                          },
+                        final album = _singles[index];
+                        return GestureDetector(
+                          onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute(builder: (context) => AlbumScreen(albumId: album.id)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: CachedNetworkImage(
+                                    imageUrl: album.coverUrl,
+                                    fit: BoxFit.cover,
+                                    placeholder: (context, url) => Container(color: Colors.grey[900]),
+                                    errorWidget: (context, url, error) => Container(color: Colors.grey[800], child: const Icon(Icons.album)),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                album.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontWeight: FontWeight.w500),
+                              ),
+                              Text(
+                                album.artistName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(color: Colors.grey, fontSize: 12),
+                              ),
+                            ],
+                          ),
                         );
                       },
                     ),
-                    // Add bottom padding to prevent overlap with bottom navigation bar
-                    SizedBox(height: kBottomNavigationBarHeight + MediaQuery.of(context).padding.bottom),
+                    const SizedBox(height: 32),
                   ],
+                  // Add bottom padding to prevent overlap with bottom navigation bar
+                  SizedBox(height: kBottomNavigationBarHeight + MediaQuery.of(context).padding.bottom),
                 ],
               ),
             ),
