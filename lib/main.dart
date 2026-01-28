@@ -19,36 +19,39 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   print("Main: Initializing...");
   
-  // Lock orientation to portrait only on mobile
-  if (Platform.isAndroid || Platform.isIOS) {
-    await SystemChrome.setPreferredOrientations([
-      DeviceOrientation.portraitUp,
-      DeviceOrientation.portraitDown,
-    ]);
-  }
-  
-  print("Main: Initializing JustAudioMediaKit...");
-  JustAudioMediaKit.ensureInitialized();
+  String? initError;
 
-  if (Platform.isAndroid || Platform.isIOS) {
-    print("Main: Initializing JustAudioBackground...");
-    await JustAudioBackground.init(
-      androidNotificationChannelId: 'com.ryanheise.audioservice.notification',
-      androidNotificationChannelName: 'Audio playback',
-      androidNotificationOngoing: true,
-    );
-  }
-  
   try {
+    // Lock orientation to portrait only on mobile
+    if (Platform.isAndroid || Platform.isIOS) {
+      await SystemChrome.setPreferredOrientations([
+        DeviceOrientation.portraitUp,
+        DeviceOrientation.portraitDown,
+      ]);
+    }
+    
+    print("Main: Initializing JustAudioMediaKit...");
+    JustAudioMediaKit.ensureInitialized();
+
+    if (Platform.isAndroid || Platform.isIOS) {
+      print("Main: Initializing JustAudioBackground...");
+      await JustAudioBackground.init(
+        androidNotificationChannelId: 'com.ryanheise.audioservice.notification',
+        androidNotificationChannelName: 'Audio playback',
+        androidNotificationOngoing: true,
+      );
+    }
+    
     print("Main: Initializing Hive...");
     await HiveService.init();
     print("Main: Hive initialized.");
   } catch (e) {
-    print("Initialization error (Hive): $e");
+    print("Initialization error: $e");
+    initError = e.toString();
   }
 
   print("Main: Running App...");
-  runApp(const MyApp());
+  runApp(MyApp(initError: initError));
 }
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
@@ -132,7 +135,6 @@ class _GlobalBottomNavBarState extends State<_GlobalBottomNavBar> {
                     child: BackdropFilter(
                       filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                       child: Container(
-                        height: kBottomNavigationBarHeight + MediaQuery.of(context).padding.bottom,
                         decoration: BoxDecoration(
                           color: Colors.black.withOpacity(0.5),
                         ),
@@ -190,7 +192,8 @@ class _GlobalBottomNavBarState extends State<_GlobalBottomNavBar> {
 }
 
 class MyApp extends StatefulWidget {
-  const MyApp({super.key});
+  final String? initError;
+  const MyApp({super.key, this.initError});
 
   @override
   State<MyApp> createState() => _MyAppState();
@@ -259,6 +262,19 @@ class _MyAppState extends State<MyApp> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.initError != null) {
+      return MaterialApp(
+        title: 'Hipotify',
+        debugShowCheckedModeBanner: false,
+        theme: ThemeData(
+          brightness: Brightness.dark,
+          scaffoldBackgroundColor: const Color(0xFF121212),
+          useMaterial3: true,
+        ),
+        home: InitializationErrorScreen(error: widget.initError!),
+      );
+    }
+
     final isDesktop = Platform.isLinux || Platform.isWindows || Platform.isMacOS;
 
     return MultiProvider(
@@ -320,6 +336,53 @@ class _MyAppState extends State<MyApp> {
             },
           );
         },
+      ),
+    );
+  }
+}
+
+class InitializationErrorScreen extends StatelessWidget {
+  final String error;
+  const InitializationErrorScreen({super.key, required this.error});
+
+  @override
+  Widget build(BuildContext context) {
+    final isLockError = error.contains('lock failed') || error.contains('errno = 11');
+
+    return Scaffold(
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.error_outline, size: 80, color: Colors.red),
+              const SizedBox(height: 24),
+              const Text(
+                "Initialization Failed",
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                isLockError 
+                  ? "Another instance of Hipotify is already running and using the database.\n\nPlease close all other instances and try again."
+                  : "An error occurred during startup:\n$error",
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 16, color: Colors.grey),
+              ),
+              const SizedBox(height: 32),
+              ElevatedButton(
+                onPressed: () => exit(0),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+                ),
+                child: const Text("CLOSE APP"),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

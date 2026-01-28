@@ -1,16 +1,19 @@
 import 'package:flutter/foundation.dart';
 import '../models/track.dart';
 import '../models/playlist.dart';
+import '../models/tidal_playlist.dart';
 import '../services/hive_service.dart';
 
 class LibraryProvider with ChangeNotifier {
   List<Track> _likedSongs = [];
   List<Track> _downloadedSongs = [];
   List<Playlist> _playlists = [];
+  List<TidalPlaylist> _savedTidalPlaylists = [];
 
   List<Track> get likedSongs => _likedSongs;
   List<Track> get downloadedSongs => _downloadedSongs;
   List<Playlist> get playlists => _playlists;
+  List<TidalPlaylist> get savedTidalPlaylists => _savedTidalPlaylists;
 
   LibraryProvider() {
     _loadLibrary();
@@ -28,6 +31,7 @@ class LibraryProvider with ChangeNotifier {
 
     // Load playlists
     _playlists = HiveService.getPlaylists();
+    _savedTidalPlaylists = HiveService.getSavedTidalPlaylists();
 
     notifyListeners();
   }
@@ -162,5 +166,19 @@ class LibraryProvider with ChangeNotifier {
 
     await HiveService.savePlaylist(updated);
     _loadLibrary();
+  }
+
+  // Tidal Playlists
+  Future<void> toggleSavePlaylist(TidalPlaylist playlist) async {
+    if (HiveService.isTidalPlaylistSaved(playlist.id)) {
+      await HiveService.removeTidalPlaylist(playlist.id);
+    } else {
+      await HiveService.saveTidalPlaylist(playlist);
+    }
+    _loadLibrary();
+  }
+
+  bool isPlaylistSaved(String playlistId) {
+    return HiveService.isTidalPlaylistSaved(playlistId);
   }
 }

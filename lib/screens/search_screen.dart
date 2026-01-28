@@ -12,6 +12,9 @@ import '../services/download_service.dart';
 import '../utils/snackbar_helper.dart';
 import 'artist_screen.dart';
 import 'album_screen.dart';
+import 'playlist_screen.dart';
+import '../models/playlist.dart';
+import '../models/tidal_playlist.dart';
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
@@ -161,9 +164,9 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   String _getItemId(dynamic item) {
-    if (item is Track) return 'track_${item.id}';
     if (item is Artist) return 'artist_${item.id}';
     if (item is Album) return 'album_${item.id}';
+    if (item is TidalPlaylist) return 'playlist_${item.id}';
     return '';
   }
 
@@ -399,6 +402,59 @@ class _SearchScreenState extends State<SearchScreen> {
                         subtitle: Text("Album • ${item.artistName}", style: const TextStyle(color: Colors.grey)),
                         onTap: () => Navigator.of(context).push(
                           MaterialPageRoute(builder: (context) => AlbumScreen(albumId: item.id)),
+                        ),
+                      );
+                    }
+
+                    if (item is TidalPlaylist) {
+                      return ListTile(
+                        leading: ClipRRect(
+                          borderRadius: BorderRadius.circular(4),
+                          child: CachedNetworkImage(
+                            imageUrl: item.imageUrl,
+                            width: 50,
+                            height: 50,
+                            fit: BoxFit.cover,
+                            errorWidget: (context, url, error) => const Icon(Icons.playlist_play, color: Colors.grey),
+                          ),
+                        ),
+                        title: Text(item.title, style: const TextStyle(color: Colors.white)),
+                        subtitle: Text("Playlist • ${item.creatorName ?? 'Tidal'} • ${item.numberOfTracks} tracks", style: const TextStyle(color: Colors.grey)),
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(builder: (context) => PlaylistScreen(playlistId: item.id)),
+                        ),
+                        trailing: Consumer<LibraryProvider>(
+                          builder: (context, library, _) {
+                            final isSaved = library.isPlaylistSaved(item.id);
+                            return PopupMenuButton<String>(
+                              icon: const Icon(Icons.more_vert, color: Colors.white),
+                              onSelected: (value) async {
+                                if (value == 'save') {
+                                  await library.toggleSavePlaylist(item);
+                                  if (context.mounted) {
+                                    showSnackBar(
+                                      context,
+                                      library.isPlaylistSaved(item.id)
+                                          ? 'Saved to library!'
+                                          : 'Removed from library',
+                                    );
+                                  }
+                                }
+                              },
+                              itemBuilder: (context) => [
+                                PopupMenuItem(
+                                  value: 'save',
+                                  child: Row(
+                                    children: [
+                                      Icon(isSaved ? Icons.bookmark : Icons.bookmark_border),
+                                      const SizedBox(width: 8),
+                                      Text(isSaved ? 'Remove from library' : 'Save to library'),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            );
+                          },
                         ),
                       );
                     }

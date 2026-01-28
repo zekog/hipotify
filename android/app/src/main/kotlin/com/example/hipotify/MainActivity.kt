@@ -1,6 +1,8 @@
 package com.example.hipotify
 
 import android.util.Log
+import android.content.Intent
+import android.media.audiofx.AudioEffect
 import android.media.MediaScannerConnection
 import androidx.annotation.NonNull
 import io.flutter.embedding.engine.FlutterEngine
@@ -20,6 +22,21 @@ class MainActivity : AudioServiceActivity() {
 
     override fun configureFlutterEngine(@NonNull flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.example.hipotify/audio").setMethodCallHandler { call, result ->
+            if (call.method == "openAudioSession") {
+                val sessionId = call.argument<Int>("sessionId")
+                if (sessionId != null) {
+                    sendAudioSessionBroadcast(sessionId)
+                    result.success(null)
+                } else {
+                    result.error("INVALID_ID", "Session ID is null", null)
+                }
+            } else {
+                result.notImplemented()
+            }
+        }
+
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
                 "scanFile" -> {
@@ -145,5 +162,14 @@ class MainActivity : AudioServiceActivity() {
                 result.notImplemented()
             }
         }
+    }
+
+    private fun sendAudioSessionBroadcast(sessionId: Int) {
+        val i = Intent(AudioEffect.ACTION_OPEN_AUDIO_EFFECT_CONTROL_SESSION)
+        i.putExtra(AudioEffect.EXTRA_AUDIO_SESSION, sessionId)
+        i.putExtra(AudioEffect.EXTRA_PACKAGE_NAME, packageName)
+        i.putExtra(AudioEffect.EXTRA_CONTENT_TYPE, AudioEffect.CONTENT_TYPE_MUSIC)
+        sendBroadcast(i)
+        Log.d("ViperFix", "Wysłano Broadcast dla sesji: $sessionId")
     }
 }

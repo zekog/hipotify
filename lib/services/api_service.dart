@@ -6,6 +6,7 @@ import '../models/track.dart';
 import '../models/artist.dart';
 import '../models/album.dart';
 import '../models/lyrics.dart';
+import '../models/tidal_playlist.dart';
 
 class ApiService {
   
@@ -24,15 +25,15 @@ class ApiService {
     'X-Client': 'BiniLossless/v3.4',
   };
 
-  static Future<List<dynamic>> search(String query, {int offset = 0, int limit = 25}) async {
+  static Future<List<dynamic>> search(String query, {int offset = 0, int limit = 50}) async {
     try {
-      final encodedQuery = Uri.encodeComponent(query);
       final List<dynamic> allItems = [];
       final Set<String> seenIds = {};
 
-      Future<void> performSearch(String typeParam, [String? inferredType]) async {
-        final uri = Uri.parse('$_baseUrl/search?$typeParam=$encodedQuery&offset=$offset&index=$offset&limit=$limit');
-        print("API Search ($typeParam): $uri");
+      Future<void> performSearch(String searchTerms, String typeParam, [String? inferredType]) async {
+        final encoded = Uri.encodeComponent(searchTerms);
+        final uri = Uri.parse('$_baseUrl/search/?$typeParam=$encoded&offset=$offset&index=$offset&limit=$limit');
+        print("API Search ($typeParam) for '$searchTerms': $uri");
         final response = await http.get(uri, headers: _headers);
 
         if (response.statusCode == 200) {
@@ -40,78 +41,247 @@ class ApiService {
           final resultData = data['data'] ?? data;
           
           void scan(dynamic value, [String? currentInferredType]) {
-            if (value == null) {
-              return;
-            }
+            if (value == null) return;
             if (value is List) {
-              for (var item in value) {
-                scan(item, currentInferredType);
-              }
+              for (var item in value) scan(item, currentInferredType);
               return;
             }
             if (value is Map) {
               final item = value['item'] ?? value;
               String? type = item['type']?.toString().toLowerCase() ?? currentInferredType;
-              final id = item['id']?.toString();
+              final id = item['id']?.toString() ?? item['uuid']?.toString();
 
               if (id != null) {
-                // Refined type guessing
                 if (type == null || type == 'main' || type == 'contributor') {
                   if (item['duration'] != null) type = 'track';
                   else if (item['artistRoles'] != null || item['artistTypes'] != null || item['picture'] != null) type = 'artist';
+                  else if (item['uuid'] != null || item['creator'] != null) type = 'playlist';
                   else if (item['cover'] != null || item['releaseDate'] != null || item['numberOfTracks'] != null) type = 'album';
                   else if (item['title'] != null && item['artist'] != null) type = 'track';
                 }
 
-                // Ensure we don't add an album as a track or vice-versa
-                bool isAlbum = type == 'album' || item['numberOfTracks'] != null;
-                bool isTrack = type == 'track' || type == 'song' || item['duration'] != null;
+                // Refine type based on specific fields
+                if (item['uuid'] != null || item['creator'] != null) {
+                  type = 'playlist';
+                } else if (item['numberOfTracks'] != null && type != 'playlist') {
+                  type = 'album';
+                } else if (item['duration'] != null && type != 'album' && type != 'playlist') {
+                  type = 'track';
+                }
 
-                if (isAlbum && type != 'album') type = 'album';
-                if (isTrack && !isAlbum && type != 'track') type = 'track';
-
-                if (type == 'track' || type == 'song' || type == 'artist' || type == 'album') {
+                if (type == 'track' || type == 'song' || type == 'artist' || type == 'album' || type == 'playlist') {
                   final uniqueId = '${type}_$id';
                   if (!seenIds.contains(uniqueId)) {
                     seenIds.add(uniqueId);
-                    if (type == 'artist') {
-                      allItems.add(Artist.fromJson(item));
-                    } else if (type == 'album') {
-                      allItems.add(Album.fromJson(item));
-                    } else {
-                      allItems.add(Track.fromJson(item));
-                    }
+                    if (type == 'artist') allItems.add(Artist.fromJson(item));
+                    else if (type == 'album') allItems.add(Album.fromJson(item));
+                    else if (type == 'playlist') allItems.add(TidalPlaylist.fromJson(item));
+                    else allItems.add(Track.fromJson(item));
                   }
-                  // Even if we added the item, we might want to scan its children (e.g. tracks in an album)
-                  // but for search results we usually want the top-level items.
-                  // However, let's continue scanning to be safe, but skip the 'item' key to avoid loops.
                 }
               }
 
               value.forEach((key, val) {
-                if (key == 'item') {
-                  return;
-                }
+                if (key == 'item') return;
                 String? nextInferredType = currentInferredType;
                 if (key == 'artists') nextInferredType = 'artist';
                 else if (key == 'albums') nextInferredType = 'album';
                 else if (key == 'tracks' || key == 'songs') nextInferredType = 'track';
+                else if (key == 'playlists') nextInferredType = 'playlist';
                 scan(val, nextInferredType);
               });
             }
           }
-
           scan(resultData, inferredType);
         }
       }
 
-      await Future.wait([
-        performSearch('s', 'track'),
-        performSearch('a', 'artist'),
-        performSearch('al', 'album'),
-      ]);
+      final List<Future<void>> searchTasks = [
+        performSearch(query, 's', 'track'),
+        performSearch(query, 'a', 'artist'),
+        performSearch(query, 'al', 'album'),
+        performSearch(query, 'p', 'playlist'),
+      ];
 
-      print("API Search Found ${allItems.length} items total");
+      // 0. MusicBrainz Mapping for Latin Queries
+      final normalizedQuery = query.toLowerCase().trim();
+      final bool queryIsLatin = RegExp(r'^[a-zA-Z0-9\s\p{P}]+$', unicode: true).hasMatch(normalizedQuery);
+      if (queryIsLatin) {
+        final originalName = await _getMusicBrainzOriginalName(query);
+        if (originalName != null && originalName.toLowerCase() != normalizedQuery) {
+          print("ApiService: MusicBrainz found original name: $originalName");
+          searchTasks.add(performSearch(originalName, 's', 'track'));
+          searchTasks.add(performSearch(originalName, 'a', 'artist'));
+          searchTasks.add(performSearch(originalName, 'al', 'album'));
+          searchTasks.add(performSearch(originalName, 'p', 'playlist'));
+        }
+      }
+
+      await Future.wait(searchTasks);
+
+      print("API Search Found ${allItems.length} items total. Injecting history and re-ranking...");
+
+      // 1. Fetch History
+      final recentTracks = HiveService.getRecentlyPlayed();
+      final recentArtists = HiveService.getRecentArtists();
+      final recentAlbums = HiveService.getRecentAlbums();
+
+      final recentTrackIds = recentTracks.map((t) => t.id.toString().trim()).toSet();
+      final recentArtistIds = recentArtists.map((a) => a.id.toString().trim()).toSet();
+      final recentAlbumIds = recentAlbums.map((a) => a.id.toString().trim()).toSet();
+
+      // 2. History Injection: If query matches something in history, ensure it's in allItems
+      
+      void injectFromHistory<T>(List<T> history, String Function(T) getTitle, String Function(T) getId, String typePrefix) {
+        for (var item in history) {
+          final title = getTitle(item).toLowerCase();
+          final id = getId(item).toString().trim();
+          final uniqueId = '${typePrefix}_$id';
+          
+          if (title.contains(normalizedQuery) && !seenIds.contains(uniqueId)) {
+            print("DEBUG: [INJECTION] Injecting $uniqueId ('${getTitle(item)}') from history");
+            allItems.add(item);
+            seenIds.add(uniqueId);
+          }
+        }
+      }
+
+      injectFromHistory<Track>(recentTracks, (t) => t.title, (t) => t.id, 'track');
+      injectFromHistory<Artist>(recentArtists, (a) => a.name, (a) => a.id, 'artist');
+      injectFromHistory<Album>(recentAlbums, (al) => al.title, (al) => al.id, 'album');
+
+      // 3. Scoring Algorithm
+      double calculateScore(dynamic item, int originalIndex) {
+        double score = 1000.0 / (originalIndex + 1); // Base score from original rank
+        
+        String itemId = "";
+        String itemTitle = "";
+        String itemArtist = "";
+        String itemAlbum = "";
+        if (item is Track) { 
+          itemId = item.id.toString().trim(); 
+          itemTitle = item.title; 
+          itemArtist = item.artistName;
+          itemAlbum = item.albumTitle;
+        }
+        else if (item is Artist) { 
+          itemId = item.id.toString().trim(); 
+          itemTitle = item.name; 
+        }
+        else if (item is Album) { 
+          itemId = item.id.toString().trim(); 
+          itemTitle = item.title; 
+          itemArtist = item.artistName;
+        }
+        else if (item is TidalPlaylist) {
+          itemId = item.id.toString().trim();
+          itemTitle = item.title;
+        }
+
+        final lowerTitle = itemTitle.toLowerCase();
+        final lowerArtist = itemArtist.toLowerCase();
+        final lowerAlbum = itemAlbum.toLowerCase();
+
+        // 1. Title Match Bonus
+        if (lowerTitle == normalizedQuery) {
+          score += 3000.0;
+        } else if (lowerTitle.startsWith(normalizedQuery)) {
+          score += 1000.0;
+        } else if (lowerTitle.contains(normalizedQuery)) {
+          score += 500.0;
+        }
+
+        // 2. Artist Match Bonus
+        if (lowerArtist.isNotEmpty) {
+          if (lowerArtist == normalizedQuery) {
+            score += 2000.0;
+          } else if (lowerArtist.startsWith(normalizedQuery)) {
+            score += 1000.0;
+          } else if (lowerArtist.contains(normalizedQuery)) {
+            score += 500.0;
+          }
+        }
+
+        // 3. Album Match Bonus
+        if (lowerAlbum.isNotEmpty) {
+          if (lowerAlbum == normalizedQuery) {
+            score += 1500.0;
+          } else if (lowerAlbum.startsWith(normalizedQuery)) {
+            score += 800.0;
+          } else if (lowerAlbum.contains(normalizedQuery)) {
+            score += 400.0;
+          }
+        }
+
+        // 4. Contextual Boost (e.g., track's artist matches query)
+        if (item is Track || item is Album) {
+          if (lowerArtist == normalizedQuery) score += 1000.0;
+          if (lowerAlbum == normalizedQuery) score += 500.0;
+        }
+
+        // 5. Transliteration Match (Script Match)
+        // If query is Latin and result contains Japanese/Korean characters, 
+        // it's likely a transliteration match from the API.
+        final bool queryIsLatin = RegExp(r'^[a-zA-Z0-9\s\p{P}]+$', unicode: true).hasMatch(normalizedQuery);
+        if (queryIsLatin) {
+          final bool hasNonLatin = RegExp(r'[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af]', unicode: true).hasMatch(itemTitle) || 
+                                   RegExp(r'[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af]', unicode: true).hasMatch(itemArtist);
+          if (hasNonLatin) {
+            score += 2000.0; // Trust the API's transliteration match
+          }
+        }
+
+        // 6. History Match Bonus (The "Spotify" logic)
+        if (item is Track) {
+          if (recentTrackIds.contains(itemId)) {
+            score += 10000.0; // Massive boost for recently played
+          } else if (recentArtistIds.contains(item.artistId.toString().trim())) {
+            score += 3000.0;
+          } else if (recentAlbumIds.contains(item.albumId.toString().trim())) {
+            score += 2000.0;
+          }
+          score += (item.popularity ?? 0) * 10.0;
+        } else if (item is Artist) {
+          if (recentArtistIds.contains(itemId)) {
+            score += 10000.0;
+          }
+          score += (item.popularity ?? 0) * 10.0;
+        } else if (item is Album) {
+          if (recentAlbumIds.contains(itemId)) {
+            score += 10000.0;
+          } else if (recentArtistIds.contains(item.artistId.toString().trim())) {
+            score += 3000.0;
+          }
+          score += (item.popularity ?? 0) * 10.0;
+        } else if (item is TidalPlaylist) {
+          // No history for public playlists yet
+          score += 1200.0; // Base boost for playlists
+        }
+
+        return score;
+      }
+
+      // Create a map of items to their scores
+      final Map<dynamic, double> scores = {};
+      for (int i = 0; i < allItems.length; i++) {
+        scores[allItems[i]] = calculateScore(allItems[i], i);
+      }
+
+      // Sort by score descending
+      allItems.sort((a, b) => scores[b]!.compareTo(scores[a]!));
+
+      print("DEBUG: Top 5 Search Results after re-ranking:");
+      for (int i = 0; i < min(5, allItems.length); i++) {
+        final item = allItems[i];
+        String name = "";
+        String id = "";
+        if (item is Track) { name = item.title; id = item.id; }
+        else if (item is Artist) { name = item.name; id = item.id; }
+        else if (item is Album) { name = item.title; id = item.id; }
+        else if (item is TidalPlaylist) { name = item.title; id = item.id; }
+        print("DEBUG: #$i: $name ($id) - Score: ${scores[item]}");
+      }
+
       return allItems;
     } catch (e) {
       print("API Search Exception: $e");
@@ -220,6 +390,27 @@ class ApiService {
 
   static Future<List<Track>> getAlbumTracks(String albumId) async {
     final uri = Uri.parse('$_baseUrl/album?id=$albumId');
+    final response = await http.get(uri, headers: _headers);
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return _scanForTracks(data);
+    }
+    return [];
+  }
+
+  static Future<TidalPlaylist> getPlaylistDetails(String playlistId) async {
+    final uri = Uri.parse('$_baseUrl/playlist/?id=$playlistId');
+    final response = await http.get(uri, headers: _headers);
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      final playlistData = data['playlist'] ?? data['data'] ?? data;
+      return TidalPlaylist.fromJson(playlistData);
+    }
+    throw Exception("Failed to get playlist details (Status: ${response.statusCode})");
+  }
+
+  static Future<List<Track>> getPlaylistTracks(String playlistId) async {
+    final uri = Uri.parse('$_baseUrl/playlist/?id=$playlistId');
     final response = await http.get(uri, headers: _headers);
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
@@ -475,6 +666,34 @@ class ApiService {
       }
     } catch (e) {
       print("Lyrics fetch error: $e");
+    }
+    return null;
+  }
+
+  static Future<String?> _getMusicBrainzOriginalName(String query) async {
+    try {
+      // MusicBrainz API requires a User-Agent
+      final uri = Uri.parse('https://musicbrainz.org/ws/2/artist/?query=${Uri.encodeComponent(query)}&fmt=json');
+      final response = await http.get(uri, headers: {
+        'User-Agent': 'Hipotify/1.0.0 ( mailto:zek@example.com )',
+        'Accept': 'application/json',
+      });
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final artists = data['artists'] as List?;
+        if (artists != null && artists.isNotEmpty) {
+          // Find the best match (highest score) that has a different name
+          final bestMatch = artists[0];
+          final score = bestMatch['score'] as int? ?? 0;
+          if (score > 90) {
+            final name = bestMatch['name'] as String?;
+            return name;
+          }
+        }
+      }
+    } catch (e) {
+      print("MusicBrainz mapping error: $e");
     }
     return null;
   }

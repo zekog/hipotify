@@ -2,19 +2,24 @@ import 'dart:io';
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_chrome_cast/flutter_chrome_cast.dart';
 import 'package:flutter_chrome_cast/entities.dart';
 import 'package:flutter_chrome_cast/enums.dart';
 import 'package:flutter_chrome_cast/models.dart';
 import 'package:flutter_chrome_cast/common/rfc5646_language.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:just_audio_background/just_audio_background.dart';
 import '../models/track.dart';
 import '../models/lyrics.dart';
 import '../services/api_service.dart';
 import '../services/hive_service.dart';
 
 class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
-  final AudioPlayer _player = AudioPlayer();
+  final AudioPlayer _player = AudioPlayer(
+    handleAudioSessionActivation: true,
+    androidOffloadSchedulingEnabled: false,
+  );
   List<Track> _queue = [];
   int _currentIndex = 0;
   bool _isLoading = false;
@@ -88,9 +93,10 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
     
     // Listen to current item index in the ConcatenatingAudioSource
     _player.currentIndexStream.listen((index) {
-      if (index != null) {
+      if (index != null && index > 0) {
         // Update the global queue index based on the window start
-        final newQueueIndex = _windowStartIndex + index;
+        // Subtract 1 because index 0 is always silence padding
+        final newQueueIndex = _windowStartIndex + index - 1;
         if (newQueueIndex != _currentIndex && newQueueIndex >= 0 && newQueueIndex < _queue.length) {
           _currentIndex = newQueueIndex.toInt();
           _fetchLyrics(_queue[_currentIndex].id);
@@ -107,14 +113,27 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
       if (sequenceState == null) return;
       final index = sequenceState.currentIndex;
       // The index here is relative to the ConcatenatingAudioSource
-      final newQueueIndex = _windowStartIndex + index;
-      if (newQueueIndex != _currentIndex && newQueueIndex >= 0 && newQueueIndex < _queue.length) {
-        _currentIndex = newQueueIndex.toInt();
-        _fetchLyrics(_queue[_currentIndex].id);
-        notifyListeners();
-        _updatePlaybackWindow();
+      // Subtract 1 because index 0 is always silence padding
+      if (index > 0) {
+        final newQueueIndex = _windowStartIndex + index - 1;
+        if (newQueueIndex != _currentIndex && newQueueIndex >= 0 && newQueueIndex < _queue.length) {
+          _currentIndex = newQueueIndex.toInt();
+          _fetchLyrics(_queue[_currentIndex].id);
+          notifyListeners();
+          _updatePlaybackWindow();
+        }
       }
     });
+
+    // Listen to audio session ID for ViPER4Android
+    if (Platform.isAndroid) {
+      _player.androidAudioSessionIdStream.listen((sessionId) {
+        if (sessionId != null) {
+          const platform = MethodChannel('com.example.hipotify/audio');
+          platform.invokeMethod('openAudioSession', {'sessionId': sessionId});
+        }
+      });
+    }
   }
 
   Future<void> playTrack(Track track) async {
@@ -144,6 +163,8 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
     notifyListeners();
 
     try {
+      // Set volume to 1.0. Silence padding will handle the "pop".
+      await _player.setVolume(1.0);
       // Initialize window at current index
       _windowStartIndex = _currentIndex;
       
@@ -168,13 +189,27 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
         );
       }
 
-      _playlist = ConcatenatingAudioSource(children: [audioSource]);
+      // Prepend silence to wake up audio session (Silence Padding)
+      final silenceSource = AudioSource.asset(
+        'assets/silence.mp3',
+        tag: MediaItem(
+          id: 'silence',
+          album: 'System',
+          title: 'Silence Padding',
+          artist: 'Hipotify',
+        ),
+      );
+      _playlist = ConcatenatingAudioSource(children: [silenceSource, audioSource]);
       
       print("PlayerProvider: Setting audio source: $urlString");
       await _player.setAudioSource(_playlist!);
+      
       print("PlayerProvider: Playing...");
       await _player.play();
       print("PlayerProvider: Playback started");
+      
+      // Removed _fadeIn() as per "Silence Padding" implementation
+      
       HiveService.addToHistory(_queue[_currentIndex]);
 
       // After playback starts, load neighbors
@@ -197,8 +232,9 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
     // For "Prev" to work, we need Prev.
     
     // 1. Load Next if missing
-    // The index of 'Current' in playlist is (_currentIndex - _windowStartIndex)
-    final playerIndex = _currentIndex - _windowStartIndex;
+    // The index of 'Current' in playlist is (_currentIndex - _windowStartIndex + 1)
+    // because index 0 is silence.
+    final playerIndex = _currentIndex - _windowStartIndex + 1;
     
     // Check if we have a Next in Queue but not in Playlist
     // Playlist length is _playlist!.length
@@ -208,8 +244,8 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
     }
 
     // 2. Load Prev if missing
-    // If playerIndex is 0 and we have items before in queue
-    if (playerIndex == 0 && _currentIndex > 0) {
+    // If playerIndex is 1 (first real track) and we have items before in queue
+    if (playerIndex == 1 && _currentIndex > 0) {
       _fetchAndAddPrev(_currentIndex - 1);
     }
   }
@@ -246,8 +282,9 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
       } else {
         source = AudioSource.uri(uri, tag: track.toMediaItem());
       }
-      await _playlist?.insert(0, source);
-      // Since we inserted at 0, the window start index decreases
+      // Insert at index 1 to keep silence padding at index 0
+      await _playlist?.insert(1, source);
+      // Since we inserted at 1, the window start index decreases
       _windowStartIndex--;
     } catch (e) {
       print("Error preloading prev: $e");
@@ -382,56 +419,51 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
       );
     }
     if (options != null) {
-      await GoogleCastContext.instance.setSharedInstanceWithOptions(options);
-      print("PlayerProvider: Cast context initialized with appId: $appId");
-      
-      // Listen to cast status
-      _castStatusSubscription?.cancel();
-      _castStatusSubscription = GoogleCastRemoteMediaClient.instance.mediaStatusStream.listen((status) {
-        print("PlayerProvider: Cast status updated: ${status?.playerState}");
-        notifyListeners();
-      });
-
-      // Listen to session changes to detect disconnects
-      _sessionSubscription?.cancel();
-      _sessionSubscription = GoogleCastSessionManager.instance.currentSessionStream.listen((session) {
-        final state = session?.connectionState;
-        print("PlayerProvider: Cast session updated: ${session?.device?.deviceID}, state: $state");
+      try {
+        await GoogleCastContext.instance.setSharedInstanceWithOptions(options);
+        print("PlayerProvider: Cast context initialized with appId: $appId");
         
-        if (session == null || state == GoogleCastConnectState.disconnected) {
-          if (_isCasting) {
-            print("PlayerProvider: Session ended or disconnected, resetting state");
-            _isCasting = false;
-            _connectedDevice = null;
-            _castStatusSubscription?.cancel();
-            _castStatusSubscription = null;
-            notifyListeners();
-          }
-        } else if (state == GoogleCastConnectState.connected) {
-          if (!_isCasting || _connectedDevice?.deviceID != session.device?.deviceID) {
-            print("PlayerProvider: Session connected, updating state");
-            _isCasting = true;
-            _connectedDevice = session.device;
-            notifyListeners();
-            
-            // If we just connected and have a queue, trigger casting
-            if (_queue.isNotEmpty) {
-              castCurrentTrack();
-            }
-          }
-        } else {
-          // Other states (connecting, disconnecting) - just notify to update UI if needed
+        // Listen to cast status
+        _castStatusSubscription?.cancel();
+        _castStatusSubscription = GoogleCastRemoteMediaClient.instance.mediaStatusStream.listen((status) {
+          print("PlayerProvider: Cast status updated: ${status?.playerState}");
           notifyListeners();
-        }
-      });
+        });
 
-      // Sync initial session state
-      final currentSession = GoogleCastSessionManager.instance.currentSession;
-      if (currentSession != null && currentSession.connectionState == GoogleCastConnectState.connected) {
-        print("PlayerProvider: Found existing connected session");
-        _isCasting = true;
-        _connectedDevice = currentSession.device;
-        notifyListeners();
+        // Listen to session changes to detect disconnects
+        _sessionSubscription?.cancel();
+        _sessionSubscription = GoogleCastSessionManager.instance.currentSessionStream.listen((session) {
+          final state = session?.connectionState;
+          print("PlayerProvider: Cast session updated: ${session?.device?.deviceID}, state: $state");
+          
+          if (session == null || state == GoogleCastConnectState.disconnected) {
+            if (_isCasting) {
+              print("PlayerProvider: Session ended or disconnected, resetting state");
+              _isCasting = false;
+              _connectedDevice = null;
+              _castStatusSubscription?.cancel();
+              _castStatusSubscription = null;
+              notifyListeners();
+            }
+          } else if (state == GoogleCastConnectState.connected) {
+            if (!_isCasting || _connectedDevice?.deviceID != session.device?.deviceID) {
+              print("PlayerProvider: Session connected, updating state");
+              _isCasting = true;
+              _connectedDevice = session.device;
+              notifyListeners();
+              
+              // If we just connected and have a queue, trigger casting
+              if (_queue.isNotEmpty) {
+                castCurrentTrack();
+              }
+            }
+          } else {
+            // Other states (connecting, disconnecting) - just notify to update UI if needed
+            notifyListeners();
+          }
+        });
+      } catch (e) {
+        print("PlayerProvider: Cast initialization failed (likely missing Google Play Services): $e");
       }
     }
   }
@@ -612,5 +644,7 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
       // Error stopping cast
     }
   }
+
+  // Removed _fadeIn() as per "Silence Padding" implementation
 }
 

@@ -5,6 +5,8 @@ class Album {
   final String artistId;
   final String coverUuid;
   final String? type;
+  final num? popularity;
+
 
   Album({
     required this.id,
@@ -13,6 +15,7 @@ class Album {
     required this.artistId,
     required this.coverUuid,
     this.type,
+    this.popularity,
   });
 
   factory Album.fromJson(Map<String, dynamic> json) {
@@ -38,7 +41,23 @@ class Album {
       artistId: artistId ?? '',
       coverUuid: json['coverUuid']?.toString() ?? json['cover']?.toString() ?? '',
       type: json['type']?.toString(),
+      popularity: _normalizePopularity(json['popularity']),
     );
+  }
+
+  static num? _normalizePopularity(dynamic value) {
+    if (value == null) return null;
+    num? pop;
+    if (value is num) {
+      pop = value;
+    } else {
+      pop = num.tryParse(value.toString());
+    }
+    
+    if (pop != null && pop > 0 && pop <= 1.0) {
+      return pop * 100.0;
+    }
+    return pop;
   }
 
   String get coverUrl {
@@ -54,6 +73,7 @@ class Album {
       'artistName': artistName,
       'artistId': artistId,
       'coverUuid': coverUuid,
+      'popularity': popularity,
     };
   }
 }
