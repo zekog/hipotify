@@ -6,13 +6,15 @@ Hipotify is a free, open-source, and ad-free music player for Android based on T
 - ❌ **Ad-Free Listening**: Stream directly from Tidal without interruptions.
 - 💿 **Lossless Audio**: Support for FLAC and Hi-Res sound quality.
 - 🎧 **Huge Catalogue**: Powered by the full TIDAL library and HiFi APIs.
-- 🔲 **Clean UI**: Premium glassmorphism aesthetic similar to Spotify.
+- 🗂️ **Playlists**: Make playlists of your favourite tracks.
+- 🔀 **Shuffle**: Shuffle through all of your songs on playlists or albums.
+- 🔲 **Clean UI**: Premium glassmorphism aesthetic similar to Spotify with option to choose full-black AMOLED theme.
 - 🎵 **Synced Lyrics**: Lyrics with tap-to-seek functionality.
-- 💾 **Smart Downloads**: Export songs and albums as lossless .flac files with full metadata (cover art, track numbers, release dates).
+- 💾 **Smart Downloads**: Export songs and albums as lossless .flac files with full metadata (cover art, track numbers, release dates) (not on IOS).
 - 📁 **Local Storage**: Playlists, liked songs, and recently listened history saved locally via Hive.
-- 🔎 **Search**: Find media and sort by album, track, artist, or playlist.
+- 🔎 **Search**: Find media and sort by album, track or artist.
 - 📊 **Stats for Nerds**: Real-time technical details (bit depth, sample rate, etc.).
-- 📡 **Chromecast**: Stream to your TV with synchronized lyrics.
+- 📡 **Chromecast**: Stream to your TV with synchronized lyrics (Android only).
 - 📶 **Audio Quality Selector**: Switch between Low, High, Lossless, and Hi-Res audio qualities.
 
 ## ⚙️ How It Works
