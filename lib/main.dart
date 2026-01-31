@@ -14,6 +14,8 @@ import 'screens/main_screen.dart';
 import 'widgets/mini_player.dart';
 import 'package:receive_intent/receive_intent.dart';
 import 'screens/player_screen.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'services/supabase_config.dart';
 import 'screens/desktop_home_screen.dart';
 
 Future<void> main() async {
@@ -43,6 +45,16 @@ Future<void> main() async {
       );
     }
     
+    print("Main: Initializing Supabase...");
+    if (SupabaseConfig.url != 'YOUR_SUPABASE_URL') {
+      await Supabase.initialize(
+        url: SupabaseConfig.url,
+        anonKey: SupabaseConfig.anonKey,
+      );
+    } else {
+      print("Main: Supabase URL not set, skipping initialization.");
+    }
+
     print("Main: Initializing Hive...");
     await HiveService.init();
     print("Main: Hive initialized.");

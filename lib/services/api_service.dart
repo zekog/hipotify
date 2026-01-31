@@ -184,9 +184,9 @@ class ApiService {
 
         // 1. Title Match Bonus
         if (lowerTitle == normalizedQuery) {
-          score += 3000.0;
+          score += 5000.0; // Higher weight for exact title
         } else if (lowerTitle.startsWith(normalizedQuery)) {
-          score += 1000.0;
+          score += 1500.0;
         } else if (lowerTitle.contains(normalizedQuery)) {
           score += 500.0;
         }
@@ -194,11 +194,11 @@ class ApiService {
         // 2. Artist Match Bonus
         if (lowerArtist.isNotEmpty) {
           if (lowerArtist == normalizedQuery) {
-            score += 2000.0;
+            score += 4000.0; // Higher weight for exact artist match
           } else if (lowerArtist.startsWith(normalizedQuery)) {
-            score += 1000.0;
+            score += 1200.0;
           } else if (lowerArtist.contains(normalizedQuery)) {
-            score += 500.0;
+            score += 600.0;
           }
         }
 

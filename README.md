@@ -6,16 +6,16 @@ Hipotify is a free, open-source, and ad-free music player for Android based on T
 - ❌ **Ad-Free Listening**: Stream directly from Tidal without interruptions.
 - 💿 **Lossless Audio**: Support for FLAC and Hi-Res sound quality.
 - 🎧 **Huge Catalogue**: Powered by the full TIDAL library and HiFi APIs.
-- 🗂️ **Playlists**: Make playlists of your favourite tracks.
-- 🔀 **Shuffle**: Shuffle through all of your songs on playlists or albums.
-- 🔲 **Clean UI**: Premium glassmorphism aesthetic similar to Spotify with option to choose full-black AMOLED theme.
-- 🎵 **Synced Lyrics**: Lyrics with tap-to-seek functionality.
-- 💾 **Smart Downloads**: Export songs and albums as lossless .flac files with full metadata (cover art, track numbers, release dates) (not on IOS).
-- 📁 **Local Storage**: Playlists, liked songs, and recently listened history saved locally via Hive.
-- 🔎 **Search**: Find media and sort by album, track or artist.
-- 📊 **Stats for Nerds**: Real-time technical details (bit depth, sample rate, etc.).
+- ☁️ **Cloud Sync & Social**: Sync likes and playlists across devices and discover community playlists via **Playlist Net**.
+- 🔎 **Advanced Search**: Intelligent scoring algorithm to find the most accurate tracks and artists.
+- 🎨 **Artist Profiles**: Organized discographies with clear separation between Albums and Singles & EPs.
+- 🎭 **Dynamic Themes**: Premium glassmorphism aesthetic with Material You (Android 12+), Catppuccin palettes, and AMOLED black mode.
+- 🎵 **Synced Lyrics**: Premium lyrics experience with tap-to-seek functionality.
+- 📊 **Last.fm Integration**: View detailed artist biographies and info.
+- 💾 **Smart Downloads**: Export songs as lossless .flac files with full metadata (Android/Linux).
 - 📡 **Chromecast**: Stream to your TV with synchronized lyrics (Android only).
-- 📶 **Audio Quality Selector**: Switch between Low, High, Lossless, and Hi-Res audio qualities.
+- 📊 **Stats for Nerds**: Real-time technical details (bit depth, sample rate, etc.).
+- 🐧 **Linux Support**: Experimental support for Linux with AppImage builds.
 
 ## ⚙️ How It Works
 Hipotify acts as a mobile frontend that fetches lossless audio directly from TIDAL.
@@ -26,10 +26,12 @@ Hipotify acts as a mobile frontend that fetches lossless audio directly from TID
 4. Hipotify plays the audio using a high-performance playback engine.
 
 ## 🔗 Credits & Related Projects
+- [Hipotify](https://github.com/zekog/hipotify) - The source code for this project
 - [hifi](https://github.com/sachinsenal0x64/hifi) - Tidal Music integration for Subsonic/Jellyfin/Plexamp
 - [tidal-ui](https://github.com/uimaxbai/tidal-ui) - Original Inspiration for the synced lyrics and UI logic
 - [hifi-api](https://github.com/uimaxbai/hifi-api) - API that fetches the streams
 - [spofree](https://github.com/redretep/spofree) - Inspiration for the feature set and design goals
+- [Catppuccin](https://github.com/catppuccin/catppuccin) - Soothing pastel themes
 
 ## 🔎 API List
 The following public HiFi API instances can be used in the app settings:

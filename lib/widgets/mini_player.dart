@@ -102,7 +102,6 @@ class MiniPlayer extends StatelessWidget {
                                   ],
                                 ),
                               ),
-                              // Wrap buttons in FocusableActionDetector or just standard IconButton which is focusable
                               IconButton(
                                 icon: Icon(player.player.playing ? Icons.pause : Icons.play_arrow),
                                 color: Colors.white,

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
+import '../services/hive_service.dart';
 import '../models/tidal_playlist.dart';
 import '../models/track.dart';
 import '../services/api_service.dart';
@@ -8,6 +9,10 @@ import '../widgets/track_tile.dart';
 import '../providers/player_provider.dart';
 import '../providers/library_provider.dart';
 import '../utils/snackbar_helper.dart';
+import '../services/supabase_playlist_service.dart';
+import '../models/playlist.dart';
+import '../services/auth_service.dart';
+import 'account_screen.dart';
 
 class PlaylistScreen extends StatefulWidget {
   final String playlistId;
@@ -30,6 +35,25 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
 
   Future<void> _fetchData() async {
     try {
+      // 1. Check if it's a local playlist in Hive
+      final localPlaylist = HiveService.getPlaylist(widget.playlistId);
+      if (localPlaylist != null) {
+        setState(() {
+          _playlist = TidalPlaylist(
+            id: localPlaylist.id,
+            title: localPlaylist.name,
+            imageUrl: '', // Local playlists might not have a single URL
+            numberOfTracks: localPlaylist.tracks.length,
+            creatorName: 'You',
+            description: 'Local Playlist',
+          );
+          _tracks = localPlaylist.tracks;
+          _isLoading = false;
+        });
+        return;
+      }
+
+      // 2. Otherwise fetch from API
       final playlist = await ApiService.getPlaylistDetails(widget.playlistId);
       final tracks = await ApiService.getPlaylistTracks(widget.playlistId);
       setState(() {
@@ -43,6 +67,71 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
         showSnackBar(context, "Error: $e");
       }
       setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _publishPlaylist() async {
+    if (!AuthService.isLoggedIn) {
+      final login = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Login Required'),
+          content: const Text('You need to be logged in to publish playlists.'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('CANCEL')),
+            ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('LOGIN')),
+          ],
+        ),
+      );
+      if (login == true && mounted) {
+        Navigator.push(context, MaterialPageRoute(builder: (_) => const AccountScreen()));
+      }
+      return;
+    }
+
+    final descriptionController = TextEditingController();
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Publish to Playlist Net?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('This will make your playlist public for everyone on Hipotify.'),
+            const SizedBox(height: 16),
+            TextField(
+              controller: descriptionController,
+              decoration: const InputDecoration(
+                labelText: 'Description (optional)',
+                border: OutlineInputBorder(),
+              ),
+              maxLines: 2,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('CANCEL')),
+          ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('PUBLISH')),
+        ],
+      ),
+    );
+
+    if (confirm == true && mounted) {
+      showSnackBar(context, 'Publishing...');
+      try {
+        final playlist = Playlist(
+          id: _playlist!.id,
+          name: _playlist!.title,
+          tracks: _tracks,
+        );
+        await SupabasePlaylistService.publishPlaylist(
+          playlist,
+          description: descriptionController.text.trim(),
+        );
+        if (mounted) showSnackBar(context, 'Published successfully!');
+      } catch (e) {
+        if (mounted) showSnackBar(context, 'Failed to publish: $e');
+      }
     }
   }
 
@@ -162,6 +251,13 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
                             color: isSaved ? Theme.of(context).primaryColor : Colors.white,
                           );
                         },
+                      ),
+                      const SizedBox(width: 16),
+                      // Publish to Network
+                      IconButton(
+                        tooltip: 'Publish to Playlist Net',
+                        icon: const Icon(Icons.public),
+                        onPressed: _publishPlaylist,
                       ),
                     ],
                   ),

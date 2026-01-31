@@ -15,6 +15,8 @@ import '../models/lyrics.dart';
 import '../services/api_service.dart';
 import '../services/hive_service.dart';
 import '../services/discord_rpc_service.dart';
+import '../services/room_service.dart';
+import '../services/auth_service.dart';
 
 class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
   final AudioPlayer _player = AudioPlayer(
@@ -36,6 +38,14 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
   Map<String, dynamic>? get currentMetadata => _currentMetadata;
   Lyrics? get currentLyrics => _currentLyrics;
   Track? get currentTrack => _queue.isNotEmpty && _currentIndex < _queue.length ? _queue[_currentIndex] : null;
+
+  // Listen Together State
+  String? _roomId;
+  bool _isHost = false;
+
+  String? get roomId => _roomId;
+  bool get isHost => _isHost;
+  bool get isInRoom => _roomId != null;
   
   // MiniPlayer visibility logic
   bool _isMiniPlayerHidden = false;
@@ -125,6 +135,13 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
         }
       });
     }
+
+    // Periodic broadcast if host (heartbeat/sync)
+    Timer.periodic(const Duration(seconds: 5), (timer) {
+      if (_roomId != null && _isHost && _player.playing) {
+        _broadcastUpdate();
+      }
+    });
   }
 
   void _updateCurrentIndex(int index) {
@@ -146,6 +163,7 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
     _queue = [track];
     _currentIndex = 0;
     await _loadAndPlayQueue();
+    _broadcastUpdate();
   }
 
   Future<void> playPlaylist(List<Track> tracks, {int initialIndex = 0}) async {
@@ -434,6 +452,7 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
         DiscordRpcService.updatePresence(_queue[_currentIndex]);
       }
     }
+    _broadcastUpdate();
   }
 
   Future<void> seek(Duration position) async {
@@ -445,6 +464,7 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
       return;
     }
     await _player.seek(position);
+    _broadcastUpdate();
   }
 
   void _initCast() async {
@@ -689,6 +709,51 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
     }
   }
 
-  // Removed _fadeIn() as per "Silence Padding" implementation
+  // Listen Together Management
+  // Listen Together feature scrapped/hidden
+  Future<void> hostRoom() async {}
+  Future<void> joinRoom(String id) async {}
+  Future<void> leaveRoom() async {
+    _roomId = null;
+    _isHost = false;
+    notifyListeners();
+  }
+
+  void _broadcastUpdate() {
+    if (_roomId == null || !_isHost || currentTrack == null) return;
+    
+    RoomService.updateRoom(
+      _roomId!,
+      track: currentTrack,
+      positionMs: _player.position.inMilliseconds,
+      isPlaying: _player.playing,
+    );
+  }
+
+  void _handleRoomUpdate(Map<String, dynamic> data) async {
+    if (_isHost) return; // Host doesn't react to updates for now
+    
+    final trackData = data['current_track_data'];
+    final remoteTrack = Track.fromJson(Map<String, dynamic>.from(trackData));
+    final remotePositionMs = data['position_ms'] as int;
+    final remoteIsPlaying = data['is_playing'] as bool;
+    
+    // 1. Check if track changed
+    if (currentTrack?.id != remoteTrack.id) {
+       await playTrack(remoteTrack);
+    }
+    
+    // 2. Check play/pause status
+    if (remoteIsPlaying != _player.playing) {
+      if (remoteIsPlaying) _player.play();
+      else _player.pause();
+    }
+    
+    // 3. Sync position if drift is > 2 seconds
+    final drift = (remotePositionMs - _player.position.inMilliseconds).abs();
+    if (drift > 2000) {
+      _player.seek(Duration(milliseconds: remotePositionMs));
+    }
+  }
 }
 

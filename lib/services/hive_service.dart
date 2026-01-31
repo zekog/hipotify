@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'cloud_sync_service.dart';
 import '../models/track.dart';
 import '../models/album.dart';
 import '../models/artist.dart';
@@ -87,6 +89,9 @@ class HiveService {
     } else {
       await likesBox.put(track.id, track.toJson());
     }
+    
+    // Sync to cloud in background
+    CloudSyncService.syncLikes();
   }
 
   static bool isLiked(String trackId) => likesBox.containsKey(trackId);

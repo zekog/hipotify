@@ -29,7 +29,9 @@ jobs:
           
       - name: Build iOS
         run: |
-          flutter build ios --release --no-codesign --config-only
+          flutter build ios --release --no-codesign --config-only \
+            --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} \
+            --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
           # Fix for rsync error in Xcode 14.3+ (more robust version)
           # We use -f to resolve symlinks, and we also handle potential spaces in paths
           find ios/Pods -name "*-frameworks.sh" -print0 | xargs -0 sed -i '' 's/source="$(readlink "${source}")"/source="$(readlink -f "${source}")"/g'

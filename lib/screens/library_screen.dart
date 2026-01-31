@@ -10,6 +10,9 @@ import '../widgets/playlist_cover_grid.dart';
 import '../services/hive_service.dart';
 import '../utils/snackbar_helper.dart';
 import 'playlist_screen.dart';
+import 'playlist_net_screen.dart';
+import 'listen_together_screen.dart';
+import '../services/auth_service.dart';
 
 class LibraryScreen extends StatelessWidget {
   const LibraryScreen({super.key});
@@ -176,6 +179,36 @@ class _PlaylistsTab extends StatelessWidget {
       builder: (context, library, _) {
         return Column(
           children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: Theme.of(context).primaryColor.withOpacity(0.2),
+                  child: Icon(Icons.public, color: Theme.of(context).primaryColor),
+                ),
+                title: const Text('Playlist Net'),
+                subtitle: const Text('Discover public playlists'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PlaylistNetScreen())),
+              ),
+            ),
+            const Divider(height: 1),
+            /*
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              child: ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: Theme.of(context).primaryColor.withOpacity(0.2),
+                  child: Icon(Icons.people, color: Theme.of(context).primaryColor),
+                ),
+                title: const Text('Listen Together'),
+                subtitle: const Text('Sync playback with friends'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ListenTogetherScreen())),
+              ),
+            ),
+            const Divider(height: 1),
+            */
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
               child: Row(
