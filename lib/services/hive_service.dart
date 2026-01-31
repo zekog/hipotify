@@ -30,8 +30,10 @@ class HiveService {
       await Hive.openBox(boxSavedTidalPlaylists);
       await Hive.openBox(boxHistory);
       _isInitialized = true;
-      // Initialize AMOLED mode notifier with saved value
+      _isInitialized = true;
+      // Initialize notifiers
       amoledModeNotifier.value = settingsBox.get('amoledMode', defaultValue: false);
+      themeModeNotifier.value = settingsBox.get('themeMode', defaultValue: 'dark');
       print("HiveService: Initialization complete.");
     } catch (e) {
       _isInitialized = false;
@@ -52,11 +54,18 @@ class HiveService {
   static Future<void> setAudioQuality(String quality) => settingsBox.put('audioQuality', quality);
 
   static final ValueNotifier<bool> amoledModeNotifier = ValueNotifier<bool>(false);
+  static final ValueNotifier<String> themeModeNotifier = ValueNotifier<String>('dark');
   
   static bool get amoledMode => amoledModeNotifier.value;
   static Future<void> setAmoledMode(bool enabled) async {
     await settingsBox.put('amoledMode', enabled);
     amoledModeNotifier.value = enabled;
+  }
+
+  static String get themeMode => themeModeNotifier.value;
+  static Future<void> setThemeMode(String mode) async {
+    await settingsBox.put('themeMode', mode);
+    themeModeNotifier.value = mode;
   }
 
   // Likes

@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import 'package:just_audio_media_kit/just_audio_media_kit.dart';
+import 'package:dynamic_color/dynamic_color.dart';
 import 'services/hive_service.dart';
 import 'providers/player_provider.dart';
 import 'providers/library_provider.dart';
@@ -282,56 +283,262 @@ class _MyAppState extends State<MyApp> {
         ChangeNotifierProvider(create: (_) => PlayerProvider()),
         ChangeNotifierProvider(create: (_) => LibraryProvider()),
       ],
-      child: ValueListenableBuilder<bool>(
-        valueListenable: HiveService.amoledModeNotifier,
-        builder: (context, amoledMode, _) {
-          return MaterialApp(
-            navigatorKey: navigatorKey,
-            navigatorObservers: [playerObserver],
-            title: 'Hipotify',
-            debugShowCheckedModeBanner: false,
-            theme: ThemeData(
-              brightness: Brightness.dark,
-              scaffoldBackgroundColor: amoledMode ? Colors.black : const Color(0xFF121212),
-              primaryColor: const Color(0xFF1DB954),
-              colorScheme: ColorScheme.dark(
-                primary: const Color(0xFF1DB954),
-                secondary: const Color(0xFF1DB954),
-                surface: amoledMode ? Colors.black : const Color(0xFF121212),
-                background: amoledMode ? Colors.black : const Color(0xFF121212),
-              ),
-              bottomNavigationBarTheme: BottomNavigationBarThemeData(
-                backgroundColor: amoledMode ? Colors.black : const Color(0xFF121212),
-                selectedItemColor: Colors.white,
-                unselectedItemColor: Colors.grey,
-                type: BottomNavigationBarType.fixed,
-              ),
-              textTheme: GoogleFonts.montserratTextTheme(
-                Theme.of(context).textTheme.apply(
-                  bodyColor: Colors.white,
-                  displayColor: Colors.white,
-                ),
-              ),
-              useMaterial3: true,
-            ),
-            home: isDesktop ? const DesktopHomeScreen() : const MainScreen(),
-            builder: (context, child) {
-              if (isDesktop) {
-                return child!;
+       child: DynamicColorBuilder(
+        builder: (lightDynamic, darkDynamic) {
+          return ValueListenableBuilder<String>(
+            valueListenable: HiveService.themeModeNotifier,
+            builder: (context, themeMode, _) {
+              ThemeData themeData;
+              
+              if (themeMode == 'monet' && darkDynamic != null) {
+                 themeData = ThemeData(
+                   useMaterial3: true,
+                   colorScheme: darkDynamic,
+                   brightness: Brightness.dark,
+                   scaffoldBackgroundColor: darkDynamic.background,
+                 );
+              } else if (themeMode == 'catppuccin_mocha') {
+                 // Catppuccin Mocha
+                 const bg = Color(0xFF1e1e2e);
+                 const primary = Color(0xFFcba6f7); // Mauve
+                 const secondary = Color(0xFF89b4fa); // Blue
+                 const surface = Color(0xFF313244);
+                 const text = Color(0xFFcdd6f4);
+                 
+                 themeData = ThemeData(
+                   useMaterial3: true,
+                   brightness: Brightness.dark,
+                   scaffoldBackgroundColor: bg,
+                   primaryColor: primary,
+                   cardColor: surface,
+                   canvasColor: bg,
+                   colorScheme: const ColorScheme.dark(
+                     primary: primary,
+                     secondary: secondary,
+                     tertiary: Color(0xFFf5c2e7), // Pink
+                     surface: surface,
+                     background: bg,
+                     onPrimary: Color(0xFF11111b), // Crust
+                     onSecondary: Color(0xFF11111b), // Crust
+                     onSurface: text,
+                     onBackground: text,
+                     error: Color(0xFFf38ba8), // Red
+                   ),
+                   bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+                     backgroundColor: bg,
+                     selectedItemColor: primary,
+                     unselectedItemColor: Color(0xFFa6adc8), // Subtext0
+                   ),
+                   textTheme:  TextTheme(
+                    bodyLarge: TextStyle(color: text),
+                    bodyMedium: TextStyle(color: text), 
+                    titleLarge: TextStyle(color: text),
+                   ),
+                   iconTheme: IconThemeData(color: text),
+                 );
+              } else if (themeMode == 'catppuccin_frappe') {
+                 // Catppuccin Frappe
+                 const bg = Color(0xFF303446);
+                 const primary = Color(0xFFca9ee6); // Mauve
+                 const secondary = Color(0xFF8caaee); // Blue
+                 const surface = Color(0xFF414559);
+                 const text = Color(0xFFc6d0f5);
+                 
+                 themeData = ThemeData(
+                   useMaterial3: true,
+                   brightness: Brightness.dark,
+                   scaffoldBackgroundColor: bg,
+                   primaryColor: primary,
+                   cardColor: surface,
+                   canvasColor: bg,
+                   colorScheme: const ColorScheme.dark(
+                     primary: primary,
+                     secondary: secondary,
+                     tertiary: Color(0xFFf4b8e4), // Pink
+                     surface: surface,
+                     background: bg,
+                     onPrimary: Color(0xFF232634), // Crust
+                     onSecondary: Color(0xFF232634), // Crust
+                     onSurface: text,
+                     onBackground: text,
+                     error: Color(0xFFe78284), // Red
+                   ),
+                   bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+                     backgroundColor: bg,
+                     selectedItemColor: primary,
+                     unselectedItemColor: Color(0xFFa5adce), // Subtext0
+                   ),
+                   textTheme:  TextTheme(
+                    bodyLarge: TextStyle(color: text),
+                    bodyMedium: TextStyle(color: text), 
+                    titleLarge: TextStyle(color: text),
+                   ),
+                   iconTheme: IconThemeData(color: text),
+                 );
+              } else if (themeMode == 'catppuccin_macchiato') {
+                 // Catppuccin Macchiato
+                 const bg = Color(0xFF24273a);
+                 const primary = Color(0xFFc6a0f6); // Mauve
+                 const secondary = Color(0xFF8aadf4); // Blue
+                 const surface = Color(0xFF363a4f);
+                 const text = Color(0xFFcad3f5);
+                 
+                 themeData = ThemeData(
+                   useMaterial3: true,
+                   brightness: Brightness.dark,
+                   scaffoldBackgroundColor: bg,
+                   primaryColor: primary,
+                   cardColor: surface,
+                   canvasColor: bg,
+                   colorScheme: const ColorScheme.dark(
+                     primary: primary,
+                     secondary: secondary,
+                     tertiary: Color(0xFFf5bde6), // Pink
+                     surface: surface,
+                     background: bg,
+                     onPrimary: Color(0xFF181926), // Crust
+                     onSecondary: Color(0xFF181926), // Crust
+                     onSurface: text,
+                     onBackground: text,
+                     error: Color(0xFFed8796), // Red
+                   ),
+                   bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+                     backgroundColor: bg,
+                     selectedItemColor: primary,
+                     unselectedItemColor: Color(0xFFa5adcb), // Subtext0
+                   ),
+                   textTheme:  TextTheme(
+                    bodyLarge: TextStyle(color: text),
+                    bodyMedium: TextStyle(color: text), 
+                    titleLarge: TextStyle(color: text),
+                   ),
+                   iconTheme: IconThemeData(color: text),
+                 );
+              } else if (themeMode == 'catppuccin_latte') {
+                 // Catppuccin Latte
+                 const bg = Color(0xFFeff1f5);
+                 const primary = Color(0xFF8839ef); // Mauve
+                 const secondary = Color(0xFF1e66f5); // Blue
+                 const surface = Color(0xFFccd0da);
+                 const text = Color(0xFF4c4f69);
+
+                 themeData = ThemeData(
+                   useMaterial3: true,
+                   brightness: Brightness.light,
+                   scaffoldBackgroundColor: bg,
+                   primaryColor: primary,
+                   cardColor: surface,
+                   canvasColor: bg,
+                   colorScheme: const ColorScheme.light(
+                     primary: primary,
+                     secondary: secondary,
+                     tertiary: Color(0xFFea76cb), // Pink
+                     surface: surface,
+                     background: bg,
+                     onPrimary: Color(0xFFdce0e8), // Crust
+                     onSecondary: Color(0xFFdce0e8), // Crust
+                     onSurface: text,
+                     onBackground: text,
+                     error: Color(0xFFd20f39), // Red
+                   ),
+                   bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+                     backgroundColor: bg,
+                     selectedItemColor: primary,
+                     unselectedItemColor: Color(0xFF9ca0b0), // Overlay0
+                   ),
+                   textTheme: GoogleFonts.montserratTextTheme(ThemeData.light().textTheme).apply(
+                      bodyColor: text,
+                      displayColor: text,
+                   ),
+                   iconTheme: IconThemeData(color: text),
+                 );
+              } else if (themeMode == 'amoled') {
+                 themeData = ThemeData(
+                   brightness: Brightness.dark,
+                   scaffoldBackgroundColor: Colors.black,
+                   primaryColor: const Color(0xFF1DB954),
+                   colorScheme: const ColorScheme.dark(
+                     primary: Color(0xFF1DB954),
+                     secondary: Color(0xFF1DB954),
+                     surface: Colors.black,
+                     background: Colors.black,
+                   ),
+                   bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+                     backgroundColor: Colors.black,
+                     selectedItemColor: Colors.white,
+                     unselectedItemColor: Colors.grey,
+                     type: BottomNavigationBarType.fixed,
+                   ),
+                   useMaterial3: true,
+                 );
+              } else {
+                 // Default Dark
+                 themeData = ThemeData(
+                   brightness: Brightness.dark,
+                   scaffoldBackgroundColor: const Color(0xFF121212),
+                   primaryColor: const Color(0xFF1DB954),
+                   colorScheme: const ColorScheme.dark(
+                     primary: Color(0xFF1DB954),
+                     secondary: Color(0xFF1DB954),
+                     surface: Color(0xFF121212),
+                     background: Color(0xFF121212),
+                   ),
+                   bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+                     backgroundColor: Color(0xFF121212),
+                     selectedItemColor: Colors.white,
+                     unselectedItemColor: Colors.grey,
+                     type: BottomNavigationBarType.fixed,
+                   ),
+                   useMaterial3: true,
+                 );
               }
-              return Stack(
-                children: [
-                  if (child != null) child,
-                  // Global bottom navigation bar using Overlay
-                  _GlobalBottomNavBar(),
-                  // Mini player - positioned above bottom navigation bar
-                  Positioned(
-                    left: 0,
-                    right: 0,
-                    bottom: kBottomNavigationBarHeight + MediaQuery.of(context).padding.bottom, 
-                    child: MiniPlayer(key: miniPlayerKey),
+
+              // Apply Font (except for Latte which already applied it on light theme base, wait, better to apply consistently)
+              if (themeMode != 'catppuccin_latte') {
+                 final isCatppuccin = themeMode != null && themeMode.contains('catppuccin');
+                 Color? bodyColor;
+
+                 if (themeMode == 'catppuccin_mocha') bodyColor = const Color(0xFFcdd6f4);
+                 else if (themeMode == 'catppuccin_frappe') bodyColor = const Color(0xFFc6d0f5);
+                 else if (themeMode == 'catppuccin_macchiato') bodyColor = const Color(0xFFcad3f5);
+                 else bodyColor = Colors.white;
+
+                themeData = themeData.copyWith(
+                  textTheme: GoogleFonts.montserratTextTheme(
+                    themeData.textTheme.apply(
+                      bodyColor: bodyColor,
+                      displayColor: bodyColor,
+                    ),
                   ),
-                ],
+                );
+              }
+
+              return MaterialApp(
+                navigatorKey: navigatorKey,
+                navigatorObservers: [playerObserver],
+                title: 'Hipotify',
+                debugShowCheckedModeBanner: false,
+                theme: themeData,
+                home: isDesktop ? const DesktopHomeScreen() : const MainScreen(),
+                builder: (context, child) {
+                  if (isDesktop) {
+                    return child!;
+                  }
+                  return Stack(
+                    children: [
+                      if (child != null) child,
+                      // Global bottom navigation bar using Overlay
+                      _GlobalBottomNavBar(),
+                      // Mini player - positioned above bottom navigation bar
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: kBottomNavigationBarHeight + MediaQuery.of(context).padding.bottom, 
+                        child: MiniPlayer(key: miniPlayerKey),
+                      ),
+                    ],
+                  );
+                },
               );
             },
           );

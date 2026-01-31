@@ -12,7 +12,7 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   final _apiUrlController = TextEditingController();
   String _selectedQuality = 'LOSSLESS';
-  bool _amoledMode = false;
+  String _selectedTheme = 'dark';
 
   @override
   void initState() {
@@ -24,14 +24,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() {
       _apiUrlController.text = HiveService.apiUrl ?? '';
       _selectedQuality = HiveService.audioQuality;
-      _amoledMode = HiveService.amoledMode;
+      _selectedTheme = HiveService.themeMode;
     });
   }
 
   Future<void> _saveSettings() async {
     await HiveService.setApiUrl(_apiUrlController.text);
     await HiveService.setAudioQuality(_selectedQuality);
-    await HiveService.setAmoledMode(_amoledMode);
+    await HiveService.setThemeMode(_selectedTheme);
+    // Backward compatibility if needed, otherwise we can ignore amoledMode legacy
+    if (_selectedTheme == 'amoled') {
+       await HiveService.setAmoledMode(true);
+    } else {
+       await HiveService.setAmoledMode(false);
+    }
     if (mounted) {
       showSnackBar(context, 'Settings Saved');
     }
@@ -78,12 +84,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(height: 20),
             const Text('Appearance', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 10),
-            SwitchListTile(
-              title: const Text('AMOLED Mode'),
-              subtitle: const Text('Use pure black background instead of dark gray'),
-              value: _amoledMode,
+            DropdownButtonFormField<String>(
+              value: _selectedTheme,
+              decoration: const InputDecoration(
+                labelText: 'Theme',
+                border: OutlineInputBorder(),
+              ),
+              items: const [
+                DropdownMenuItem(value: 'dark', child: Text('Dark Grey (Default)')),
+                DropdownMenuItem(value: 'amoled', child: Text('Amoled Black')),
+                DropdownMenuItem(value: 'monet', child: Text('Monet (Dynamic Color)')),
+                DropdownMenuItem(value: 'catppuccin_latte', child: Text('Catppuccin 🌻 Latte')),
+                DropdownMenuItem(value: 'catppuccin_frappe', child: Text('Catppuccin 🪴 Frappé')),
+                DropdownMenuItem(value: 'catppuccin_macchiato', child: Text('Catppuccin 🌺 Macchiato')),
+                DropdownMenuItem(value: 'catppuccin_mocha', child: Text('Catppuccin 🌿 Mocha')),
+              ],
               onChanged: (value) {
-                setState(() => _amoledMode = value);
+                if (value != null) {
+                  setState(() => _selectedTheme = value);
+                }
               },
             ),
             const SizedBox(height: 20),

@@ -14,6 +14,9 @@ class TrackTile extends StatefulWidget {
   final bool enablePlaylistActions;
   final bool showMenu;
   final Widget? trailing;
+  final bool showIndex;
+  final int? index;
+  final bool showCover;
 
   const TrackTile({
     super.key,
@@ -23,6 +26,9 @@ class TrackTile extends StatefulWidget {
     this.enablePlaylistActions = false,
     this.showMenu = false,
     this.trailing,
+    this.showIndex = false,
+    this.index,
+    this.showCover = true,
   });
 
   @override
@@ -166,6 +172,12 @@ class _TrackTileState extends State<TrackTile> {
                       : 'Removed from favorites',
                 );
               }
+            } else if (value == 'play_next') {
+              final player = Provider.of<PlayerProvider>(context, listen: false);
+              await player.addToNext(widget.track);
+              if (mounted) {
+                showSnackBar(context, 'Set as next track');
+              }
             } else if (value == 'playlist') {
               _showAddToPlaylistSheet();
             } else if (value == 'download') {
@@ -197,6 +209,16 @@ class _TrackTileState extends State<TrackTile> {
                     Icon(isLiked ? Icons.favorite : Icons.favorite_border),
                     const SizedBox(width: 8),
                     Text(isLiked ? 'Remove from favorites' : 'Add to favorites'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'play_next',
+                child: Row(
+                  children: [
+                    Icon(Icons.play_arrow_outlined),
+                    SizedBox(width: 8),
+                    Text('Play next'),
                   ],
                 ),
               ),
@@ -253,21 +275,36 @@ class _TrackTileState extends State<TrackTile> {
                 padding: const EdgeInsets.symmetric(vertical: 8.0),
                 child: Row(
                   children: [
-                    // Leading (cover image)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(4),
-                        child: CachedNetworkImage(
-                          imageUrl: widget.track.coverUrl,
-                          width: 50,
-                          height: 50,
-                          fit: BoxFit.cover,
-                          placeholder: (context, url) => Container(color: Colors.grey[800]),
-                          errorWidget: (context, url, error) => const Icon(Icons.music_note),
+                    // Index (optional)
+                    if (widget.showIndex && widget.index != null)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                        child: Text(
+                          '${widget.index! + 1}',
+                          style: TextStyle(
+                            color: Colors.grey[400],
+                            fontSize: 16,
+                            fontWeight: FontWeight.w500,
+                          ),
                         ),
                       ),
-                    ),
+                      
+                    // Leading (cover image - optional)
+                    if (widget.showCover)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(4),
+                          child: CachedNetworkImage(
+                            imageUrl: widget.track.coverUrl,
+                            width: 50,
+                            height: 50,
+                            fit: BoxFit.cover,
+                            placeholder: (context, url) => Container(color: Colors.grey[800]),
+                            errorWidget: (context, url, error) => const Icon(Icons.music_note),
+                          ),
+                        ),
+                      ),
                     // Title and subtitle
                     Expanded(
                       child: Column(

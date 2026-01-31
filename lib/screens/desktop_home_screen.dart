@@ -30,28 +30,21 @@ class _DesktopHomeScreenState extends State<DesktopHomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textColor = isDark ? Colors.white : Colors.black;
+    final unselectedTextColor = isDark ? Colors.white.withOpacity(0.5) : Colors.black54;
+    final glassColor = isDark ? Colors.black : Colors.white;
+
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: Stack(
         children: [
-          // Background Gradient
-          ValueListenableBuilder<bool>(
-            valueListenable: HiveService.amoledModeNotifier,
-            builder: (context, amoledMode, _) {
-              return Container(
-                decoration: BoxDecoration(
-                  gradient: amoledMode
-                      ? null
-                      : const LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [Color(0xFF121212), Color(0xFF1E1E1E), Color(0xFF000000)],
-                        ),
-                  color: amoledMode ? Colors.black : null,
-                ),
-              );
-            },
+          // Background Gradient (only for dark/amoled, or rely on theme)
+          // Removing hardcoded dark gradient to respect theme background
+          Container(
+            color: Theme.of(context).scaffoldBackgroundColor,
           ),
+          
           Column(
             children: [
               Expanded(
@@ -63,12 +56,12 @@ class _DesktopHomeScreenState extends State<DesktopHomeScreen> {
                       child: GlassContainer(
                         blur: 20,
                         opacity: 0.1,
-                        color: Colors.black,
+                        color: glassColor,
                         child: Column(
                           children: [
                             const SizedBox(height: 40),
-                            // App Logo or Icon could go here
-                            const Icon(Icons.music_note, color: Colors.white, size: 40),
+                            // App Logo or Icon
+                            Icon(Icons.music_note, color: textColor, size: 40),
                             const SizedBox(height: 40),
                             Expanded(
                               child: NavigationRail(
@@ -80,17 +73,17 @@ class _DesktopHomeScreenState extends State<DesktopHomeScreen> {
                                   });
                                 },
                                 labelType: NavigationRailLabelType.all,
-                                selectedLabelTextStyle: const TextStyle(
-                                  color: Colors.white,
+                                selectedLabelTextStyle: TextStyle(
+                                  color: textColor,
                                   fontWeight: FontWeight.bold,
                                   fontSize: 12,
                                 ),
                                 unselectedLabelTextStyle: TextStyle(
-                                  color: Colors.white.withOpacity(0.5),
+                                  color: unselectedTextColor,
                                   fontSize: 12,
                                 ),
-                                selectedIconTheme: const IconThemeData(color: Colors.white, size: 28),
-                                unselectedIconTheme: IconThemeData(color: Colors.white.withOpacity(0.5), size: 24),
+                                selectedIconTheme: IconThemeData(color: textColor, size: 28),
+                                unselectedIconTheme: IconThemeData(color: unselectedTextColor, size: 24),
                                 destinations: const [
                                   NavigationRailDestination(
                                     icon: Icon(Icons.home_filled),

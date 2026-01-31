@@ -45,6 +45,8 @@ class _SearchScreenState extends State<SearchScreen> {
   bool _hasMore = true;
   String _lastQuery = '';
   final Set<String> _resultIds = {};
+  final Set<String> _seenAlbumTitles = {};
+  final Set<String> _seenArtistNames = {};
   List<String> _searchHistory = [];
 
   @override
@@ -61,6 +63,8 @@ class _SearchScreenState extends State<SearchScreen> {
     setState(() {
       _results = [];
       _resultIds.clear();
+      _seenAlbumTitles.clear();
+      _seenArtistNames.clear();
       _offset = 0;
       _hasMore = true;
       _lastQuery = '';
@@ -109,6 +113,8 @@ class _SearchScreenState extends State<SearchScreen> {
       _isLoading = true;
       _results = [];
       _resultIds.clear();
+      _seenAlbumTitles.clear();
+      _seenArtistNames.clear();
       _offset = 0;
       _hasMore = true;
       _lastQuery = query;
@@ -120,8 +126,27 @@ class _SearchScreenState extends State<SearchScreen> {
         for (var item in results) {
           final id = _getItemId(item);
           if (id.isNotEmpty && !_resultIds.contains(id)) {
-            _results.add(item);
-            _resultIds.add(id);
+            bool isDuplicate = false;
+            if (item is Artist) {
+               final key = item.name.trim().toLowerCase();
+               if (_seenArtistNames.contains(key)) {
+                 isDuplicate = true;
+               } else {
+                 _seenArtistNames.add(key);
+               }
+            } else if (item is Album) {
+               final key = item.title.trim().toLowerCase();
+               if (_seenAlbumTitles.contains(key)) {
+                 isDuplicate = true;
+               } else {
+                 _seenAlbumTitles.add(key);
+               }
+            }
+
+            if (!isDuplicate) {
+              _results.add(item);
+              _resultIds.add(id);
+            }
           }
         }
         _offset += results.length;
@@ -144,9 +169,28 @@ class _SearchScreenState extends State<SearchScreen> {
         for (var item in results) {
           final id = _getItemId(item);
           if (id.isNotEmpty && !_resultIds.contains(id)) {
-            _results.add(item);
-            _resultIds.add(id);
-            addedCount++;
+            bool isDuplicate = false;
+            if (item is Artist) {
+               final key = item.name.trim().toLowerCase();
+               if (_seenArtistNames.contains(key)) {
+                 isDuplicate = true;
+               } else {
+                 _seenArtistNames.add(key);
+               }
+            } else if (item is Album) {
+               final key = item.title.trim().toLowerCase();
+               if (_seenAlbumTitles.contains(key)) {
+                 isDuplicate = true;
+               } else {
+                 _seenAlbumTitles.add(key);
+               }
+            }
+
+            if (!isDuplicate) {
+              _results.add(item);
+              _resultIds.add(id);
+              addedCount++;
+            }
           }
         }
         _offset += results.length;
@@ -202,6 +246,7 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   Future<void> _showAddToPlaylistMenu(BuildContext context, Track track, LibraryProvider library) async {
+    final textColor = Theme.of(context).brightness == Brightness.light ? Colors.black : Colors.white;
     await showDialog<void>(
       context: context,
       barrierDismissible: true,
@@ -210,7 +255,7 @@ class _SearchScreenState extends State<SearchScreen> {
           child: Material(
             type: MaterialType.card,
             borderRadius: BorderRadius.circular(16),
-            color: const Color(0xFF1E1E1E),
+            color: Theme.of(context).cardColor,
             child: Container(
               constraints: const BoxConstraints(maxWidth: 400, maxHeight: 600),
               child: Consumer<LibraryProvider>(
@@ -222,13 +267,13 @@ class _SearchScreenState extends State<SearchScreen> {
                         padding: const EdgeInsets.all(16.0),
                         child: Row(
                           children: [
-                            const Expanded(
+                             Expanded(
                               child: Text(
                                 'Add to playlist',
                                 style: TextStyle(
                                   fontSize: 20,
                                   fontWeight: FontWeight.bold,
-                                  color: Colors.white,
+                                  color: textColor,
                                 ),
                               ),
                             ),
@@ -244,8 +289,8 @@ class _SearchScreenState extends State<SearchScreen> {
                           shrinkWrap: true,
                           children: [
                             ListTile(
-                              leading: const Icon(Icons.add, color: Colors.white),
-                              title: const Text('New playlist', style: TextStyle(color: Colors.white)),
+                              leading: Icon(Icons.add, color: textColor),
+                              title: Text('New playlist', style: TextStyle(color: textColor)),
                               onTap: () async {
                                 Navigator.of(context).pop();
                                 final name = await _promptForPlaylistName(context);
@@ -279,9 +324,9 @@ class _SearchScreenState extends State<SearchScreen> {
                                   return ListTile(
                                     leading: Icon(
                                       isInPlaylist ? Icons.check_circle : Icons.queue_music,
-                                      color: isInPlaylist ? Theme.of(context).primaryColor : Colors.white,
+                                      color: isInPlaylist ? Theme.of(context).primaryColor : textColor,
                                     ),
-                                    title: Text(p.name, style: const TextStyle(color: Colors.white)),
+                                    title: Text(p.name, style: TextStyle(color: textColor)),
                                     subtitle: Text(
                                       '${p.tracks.length} tracks',
                                       style: const TextStyle(color: Colors.grey),
@@ -323,17 +368,20 @@ class _SearchScreenState extends State<SearchScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final textColor = Theme.of(context).brightness == Brightness.light ? Colors.black : Colors.white;
+    final hintColor = Theme.of(context).brightness == Brightness.light ? Colors.grey[600] : Colors.grey;
+
     return Scaffold(
       appBar: AppBar(
         title: TextField(
           controller: _searchController,
           autofocus: false,
-          decoration: const InputDecoration(
+          decoration: InputDecoration(
             hintText: 'Search songs, artists, albums...',
             border: InputBorder.none,
-            hintStyle: TextStyle(color: Colors.grey),
+            hintStyle: TextStyle(color: hintColor),
           ),
-          style: const TextStyle(color: Colors.white, fontSize: 18),
+          style: TextStyle(color: textColor, fontSize: 18),
           onSubmitted: _performSearch,
           textInputAction: TextInputAction.search,
         ),
@@ -378,7 +426,7 @@ class _SearchScreenState extends State<SearchScreen> {
                             errorWidget: (context, url, error) => const Icon(Icons.person, color: Colors.grey),
                           ),
                         ),
-                        title: Text(item.name, style: const TextStyle(color: Colors.white)),
+                        title: Text(item.name, style: TextStyle(color: textColor)),
                         subtitle: const Text("Artist", style: TextStyle(color: Colors.grey)),
                         onTap: () => Navigator.of(context).push(
                           MaterialPageRoute(builder: (context) => ArtistScreen(artistId: item.id)),
@@ -398,7 +446,7 @@ class _SearchScreenState extends State<SearchScreen> {
                             errorWidget: (context, url, error) => const Icon(Icons.album, color: Colors.grey),
                           ),
                         ),
-                        title: Text(item.title, style: const TextStyle(color: Colors.white)),
+                        title: Text(item.title, style: TextStyle(color: textColor)),
                         subtitle: Text("Album • ${item.artistName}", style: const TextStyle(color: Colors.grey)),
                         onTap: () => Navigator.of(context).push(
                           MaterialPageRoute(builder: (context) => AlbumScreen(albumId: item.id)),
@@ -418,7 +466,7 @@ class _SearchScreenState extends State<SearchScreen> {
                             errorWidget: (context, url, error) => const Icon(Icons.playlist_play, color: Colors.grey),
                           ),
                         ),
-                        title: Text(item.title, style: const TextStyle(color: Colors.white)),
+                        title: Text(item.title, style: TextStyle(color: textColor)),
                         subtitle: Text("Playlist • ${item.creatorName ?? 'Tidal'} • ${item.numberOfTracks} tracks", style: const TextStyle(color: Colors.grey)),
                         onTap: () => Navigator.of(context).push(
                           MaterialPageRoute(builder: (context) => PlaylistScreen(playlistId: item.id)),
@@ -427,7 +475,7 @@ class _SearchScreenState extends State<SearchScreen> {
                           builder: (context, library, _) {
                             final isSaved = library.isPlaylistSaved(item.id);
                             return PopupMenuButton<String>(
-                              icon: const Icon(Icons.more_vert, color: Colors.white),
+                              icon: Icon(Icons.more_vert, color: textColor),
                               onSelected: (value) async {
                                 if (value == 'save') {
                                   await library.toggleSavePlaylist(item);
@@ -446,9 +494,9 @@ class _SearchScreenState extends State<SearchScreen> {
                                   value: 'save',
                                   child: Row(
                                     children: [
-                                      Icon(isSaved ? Icons.bookmark : Icons.bookmark_border),
+                                      Icon(isSaved ? Icons.bookmark : Icons.bookmark_border, color: Colors.black),
                                       const SizedBox(width: 8),
-                                      Text(isSaved ? 'Remove from library' : 'Save to library'),
+                                      const Text('Toggle Library', style: TextStyle(color: Colors.black)),
                                     ],
                                   ),
                                 ),
@@ -476,11 +524,11 @@ class _SearchScreenState extends State<SearchScreen> {
                                 errorWidget: (context, url, error) => const Icon(Icons.music_note, color: Colors.grey),
                               ),
                             ),
-                            title: Text(item.title, style: const TextStyle(color: Colors.white)),
+                            title: Text(item.title, style: TextStyle(color: textColor)),
                             subtitle: Text(item.artistName, style: const TextStyle(color: Colors.grey)),
                             onTap: () => Provider.of<PlayerProvider>(context, listen: false).playTrack(item),
                             trailing: PopupMenuButton<String>(
-                              icon: const Icon(Icons.more_vert, color: Colors.white),
+                              icon: Icon(Icons.more_vert, color: textColor),
                               onSelected: (value) async {
                                 if (value == 'favorite') {
                                   await library.toggleLike(item);
@@ -516,9 +564,9 @@ class _SearchScreenState extends State<SearchScreen> {
                                   value: 'favorite',
                                   child: Row(
                                     children: [
-                                      Icon(isLiked ? Icons.favorite : Icons.favorite_border),
+                                      Icon(isLiked ? Icons.favorite : Icons.favorite_border, color: Colors.black),
                                       const SizedBox(width: 8),
-                                      Text(isLiked ? 'Remove from favorites' : 'Add to favorites'),
+                                      Text(isLiked ? 'Remove from favorites' : 'Add to favorites', style: const TextStyle(color: Colors.black)),
                                     ],
                                   ),
                                 ),
@@ -526,9 +574,9 @@ class _SearchScreenState extends State<SearchScreen> {
                                   value: 'playlist',
                                   child: Row(
                                     children: [
-                                      Icon(Icons.playlist_add),
+                                      Icon(Icons.playlist_add, color: Colors.black),
                                       SizedBox(width: 8),
-                                      Text('Add to playlist'),
+                                      Text('Add to playlist', style: TextStyle(color: Colors.black)),
                                     ],
                                   ),
                                 ),
@@ -537,9 +585,9 @@ class _SearchScreenState extends State<SearchScreen> {
                                     value: 'download',
                                     child: Row(
                                       children: [
-                                        Icon(Icons.download),
+                                        Icon(Icons.download, color: Colors.black),
                                         SizedBox(width: 8),
-                                        Text('Download'),
+                                        Text('Download', style: TextStyle(color: Colors.black)),
                                       ],
                                     ),
                                   ),
@@ -557,6 +605,7 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   Widget _buildSearchHistory() {
+    final textColor = Theme.of(context).brightness == Brightness.light ? Colors.black : Colors.white;
     if (_searchHistory.isEmpty) {
       return const Center(
         child: Text(
@@ -572,7 +621,7 @@ class _SearchScreenState extends State<SearchScreen> {
         final query = _searchHistory[index];
         return ListTile(
           leading: const Icon(Icons.history, color: Colors.grey),
-          title: Text(query, style: const TextStyle(color: Colors.white)),
+          title: Text(query, style: TextStyle(color: textColor)),
           trailing: IconButton(
             icon: const Icon(Icons.close, color: Colors.grey, size: 20),
             onPressed: () async {

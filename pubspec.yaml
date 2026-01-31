@@ -28,6 +28,8 @@ dependencies:
   receive_intent: ^0.2.7
   flutter_chrome_cast: ^1.2.9
   image_picker: ^1.0.7
+  discord_rpc: ^0.0.2
+  dynamic_color: ^1.7.0
 
 dev_dependencies:
   flutter_test:

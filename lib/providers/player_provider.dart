@@ -14,6 +14,7 @@ import '../models/track.dart';
 import '../models/lyrics.dart';
 import '../services/api_service.dart';
 import '../services/hive_service.dart';
+import '../services/discord_rpc_service.dart';
 
 class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
   final AudioPlayer _player = AudioPlayer(
@@ -68,6 +69,7 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
 
   ConcatenatingAudioSource? _playlist;
   int _windowStartIndex = 0;
+  double _savedVolume = 1.0;
 
   PlayerProvider() {
     _init();
@@ -81,8 +83,17 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
     }
   }
 
+  bool _isModifyingPlaylist = false;
+
   void _init() {
+    DiscordRpcService.init();
     _initCast();
+    
+    // Listen to volume changes to save state
+    _player.volumeStream.listen((volume) {
+      _savedVolume = volume;
+    });
+
     _player.playerStateStream.listen((state) {
       if (state.processingState == ProcessingState.completed) {
         // If we reached the end of the buffer, try to load more?
@@ -93,36 +104,16 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
     
     // Listen to current item index in the ConcatenatingAudioSource
     _player.currentIndexStream.listen((index) {
-      if (index != null && index > 0) {
-        // Update the global queue index based on the window start
-        // Subtract 1 because index 0 is always silence padding
-        final newQueueIndex = _windowStartIndex + index - 1;
-        if (newQueueIndex != _currentIndex && newQueueIndex >= 0 && newQueueIndex < _queue.length) {
-          _currentIndex = newQueueIndex.toInt();
-          _fetchLyrics(_queue[_currentIndex].id);
-          HiveService.addToHistory(_queue[_currentIndex]);
-          notifyListeners();
-          // Preload neighbors when index changes
-          _updatePlaybackWindow();
-        }
+      if (index != null && !_isModifyingPlaylist) {
+        _updateCurrentIndex(index);
       }
     });
 
     // Listen to sequence state for background skips
     _player.sequenceStateStream.listen((sequenceState) {
-      if (sequenceState == null) return;
+      if (sequenceState == null || _isModifyingPlaylist) return;
       final index = sequenceState.currentIndex;
-      // The index here is relative to the ConcatenatingAudioSource
-      // Subtract 1 because index 0 is always silence padding
-      if (index > 0) {
-        final newQueueIndex = _windowStartIndex + index - 1;
-        if (newQueueIndex != _currentIndex && newQueueIndex >= 0 && newQueueIndex < _queue.length) {
-          _currentIndex = newQueueIndex.toInt();
-          _fetchLyrics(_queue[_currentIndex].id);
-          notifyListeners();
-          _updatePlaybackWindow();
-        }
-      }
+      _updateCurrentIndex(index);
     });
 
     // Listen to audio session ID for ViPER4Android
@@ -136,6 +127,21 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
     }
   }
 
+  void _updateCurrentIndex(int index) {
+      // Update the global queue index based on the window start
+      final newQueueIndex = _windowStartIndex + index;
+      if (newQueueIndex != _currentIndex && newQueueIndex >= 0 && newQueueIndex < _queue.length) {
+        _currentIndex = newQueueIndex.toInt();
+        _fetchLyrics(_queue[_currentIndex].id);
+        HiveService.addToHistory(_queue[_currentIndex]);
+        notifyListeners();
+        // Preload neighbors when index changes
+        _updatePlaybackWindow();
+      }
+  }
+  
+  // ... (lines 148-319 unchanged)
+  
   Future<void> playTrack(Track track) async {
     _queue = [track];
     _currentIndex = 0;
@@ -155,6 +161,43 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
     await _loadAndPlayQueue();
   }
 
+  Future<void> addToNext(Track track) async {
+    if (_queue.isEmpty) {
+      await playTrack(track);
+      return;
+    }
+
+    final insertIndex = _currentIndex + 1;
+    _queue.insert(insertIndex, track);
+    notifyListeners();
+
+    if (_playlist != null) {
+      // Calculate insertion index in the ConcatenatingAudioSource
+      // Current item is at: _currentIndex - _windowStartIndex
+      // We want to insert after it, so + 1.
+      final playlistInsertIndex = (_currentIndex - _windowStartIndex) + 1;
+
+      // Only insert if it falls within valid bounds of the current playlist window
+      // It's possible the window doesn't even cover the immediate next if we are at the end?
+      // But usually we are.
+      if (playlistInsertIndex >= 0 && playlistInsertIndex <= _playlist!.length) {
+         try {
+           final uri = await _getUri(track);
+           AudioSource source;
+           final urlString = uri.toString();
+           if (urlString.startsWith('data:application/dash+xml')) {
+              source = DashAudioSource(uri, tag: track.toMediaItem());
+           } else {
+              source = AudioSource.uri(uri, tag: track.toMediaItem());
+           }
+           await _playlist!.insert(playlistInsertIndex, source);
+         } catch (e) {
+           print("Error adding to next: $e");
+         }
+      }
+    }
+  }
+
   Future<void> _loadAndPlayQueue() async {
     if (_queue.isEmpty) return;
 
@@ -163,8 +206,8 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
     notifyListeners();
 
     try {
-      // Set volume to 1.0. Silence padding will handle the "pop".
-      await _player.setVolume(1.0);
+      // Set volume to previously saved volume
+      await _player.setVolume(_savedVolume);
       // Initialize window at current index
       _windowStartIndex = _currentIndex;
       
@@ -189,17 +232,8 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
         );
       }
 
-      // Prepend silence to wake up audio session (Silence Padding)
-      final silenceSource = AudioSource.asset(
-        'assets/silence.mp3',
-        tag: MediaItem(
-          id: 'silence',
-          album: 'System',
-          title: 'Silence Padding',
-          artist: 'Hipotify',
-        ),
-      );
-      _playlist = ConcatenatingAudioSource(children: [silenceSource, audioSource]);
+      // No silence padding
+      _playlist = ConcatenatingAudioSource(children: [audioSource]);
       
       print("PlayerProvider: Setting audio source: $urlString");
       await _player.setAudioSource(_playlist!);
@@ -211,6 +245,8 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
       // Removed _fadeIn() as per "Silence Padding" implementation
       
       HiveService.addToHistory(_queue[_currentIndex]);
+      
+      DiscordRpcService.updatePresence(_queue[_currentIndex]);
 
       // After playback starts, load neighbors
       _updatePlaybackWindow();
@@ -232,9 +268,8 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
     // For "Prev" to work, we need Prev.
     
     // 1. Load Next if missing
-    // The index of 'Current' in playlist is (_currentIndex - _windowStartIndex + 1)
-    // because index 0 is silence.
-    final playerIndex = _currentIndex - _windowStartIndex + 1;
+    // The index of 'Current' in playlist is (_currentIndex - _windowStartIndex)
+    final playerIndex = _currentIndex - _windowStartIndex;
     
     // Check if we have a Next in Queue but not in Playlist
     // Playlist length is _playlist!.length
@@ -244,8 +279,8 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
     }
 
     // 2. Load Prev if missing
-    // If playerIndex is 1 (first real track) and we have items before in queue
-    if (playerIndex == 1 && _currentIndex > 0) {
+    // If playerIndex is 0 (first real track) and we have items before in queue
+    if (playerIndex == 0 && _currentIndex > 0) {
       _fetchAndAddPrev(_currentIndex - 1);
     }
   }
@@ -270,6 +305,7 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
   }
 
   Future<void> _fetchAndAddPrev(int queueIndex) async {
+    _isModifyingPlaylist = true;
     try {
       final track = _queue[queueIndex];
       print("Preloading Prev: ${track.title}");
@@ -282,12 +318,14 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
       } else {
         source = AudioSource.uri(uri, tag: track.toMediaItem());
       }
-      // Insert at index 1 to keep silence padding at index 0
-      await _playlist?.insert(1, source);
-      // Since we inserted at 1, the window start index decreases
+      // Insert at index 0 (start of playlist)
+      await _playlist?.insert(0, source);
+      // Since we inserted at 0, the window start index decreases
       _windowStartIndex--;
     } catch (e) {
       print("Error preloading prev: $e");
+    } finally {
+      _isModifyingPlaylist = false;
     }
   }
 
@@ -387,8 +425,14 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
     }
     if (_player.playing) {
       await _player.pause();
+      if (_queue.isNotEmpty) {
+        DiscordRpcService.updatePresence(_queue[_currentIndex], isPaused: true);
+      }
     } else {
       await _player.play();
+      if (_queue.isNotEmpty) {
+        DiscordRpcService.updatePresence(_queue[_currentIndex]);
+      }
     }
   }
 

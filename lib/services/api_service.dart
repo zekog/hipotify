@@ -295,6 +295,7 @@ class ApiService {
     
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
+      print("DEBUG: Raw Artist Data: $data"); // Check for bio/description
       final artistData = _findArtistInResponse(data, artistId);
       if (artistData != null) {
         return artistData;
@@ -345,6 +346,21 @@ class ApiService {
     final response = await http.get(uri, headers: _headers);
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
+      
+      // Try to find "Top Tracks" module first to avoid grabbing all tracks
+      final modules = data['modules'] ?? data['data']?['modules'];
+      if (modules is List) {
+        for (var module in modules) {
+           final type = module['type']?.toString().toUpperCase();
+           final title = module['title']?.toString().toLowerCase();
+           
+           if (type == 'TRACK_LIST' || type == 'TOP_TRACKS' || (title != null && title.contains('top'))) {
+             print("ApiService: Found Top Tracks module: ${module['title']}");
+             return _scanForTracks(module);
+           }
+        }
+      }
+
       return _scanForTracks(data);
     }
     return [];

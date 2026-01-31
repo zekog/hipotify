@@ -10,6 +10,12 @@ class DesktopPlayerBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textColor = isDark ? Colors.white : Colors.black;
+    final secondaryTextColor = isDark ? Colors.white.withOpacity(0.7) : Colors.black54;
+    final iconColor = isDark ? Colors.white : Colors.black;
+    final glassColor = isDark ? Colors.black : Colors.white;
+
     return Consumer<PlayerProvider>(
       builder: (context, player, child) {
         final track = player.currentTrack;
@@ -27,7 +33,7 @@ class DesktopPlayerBar extends StatelessWidget {
           height: 120,
           blur: 20,
           opacity: 0.1,
-          color: Colors.black,
+          color: glassColor,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 12.0),
             child: Row(
@@ -51,8 +57,8 @@ class DesktopPlayerBar extends StatelessWidget {
                   children: [
                     Text(
                       track.title,
-                      style: const TextStyle(
-                        color: Colors.white,
+                      style: TextStyle(
+                        color: textColor,
                         fontWeight: FontWeight.bold,
                         fontSize: 16,
                       ),
@@ -61,7 +67,7 @@ class DesktopPlayerBar extends StatelessWidget {
                     Text(
                       track.artistName,
                       style: TextStyle(
-                        color: Colors.white.withOpacity(0.7),
+                        color: secondaryTextColor,
                         fontSize: 14,
                       ),
                     ),
@@ -76,19 +82,19 @@ class DesktopPlayerBar extends StatelessWidget {
                       children: [
                         IconButton(
                           icon: const Icon(Icons.shuffle),
-                          color: Colors.white.withOpacity(0.7),
+                          color: secondaryTextColor,
                           onPressed: () {}, // TODO: Implement shuffle
                         ),
                         IconButton(
                           icon: const Icon(Icons.skip_previous),
-                          color: Colors.white,
+                          color: iconColor,
                           iconSize: 28,
                           onPressed: () => player.previous(),
                         ),
                         Container(
                           margin: const EdgeInsets.symmetric(horizontal: 16),
                           decoration: BoxDecoration(
-                            color: Colors.white,
+                            color: iconColor,
                             shape: BoxShape.circle,
                             boxShadow: [
                               BoxShadow(
@@ -100,20 +106,20 @@ class DesktopPlayerBar extends StatelessWidget {
                           ),
                           child: IconButton(
                             icon: Icon(player.player.playing ? Icons.pause : Icons.play_arrow),
-                            color: Colors.black,
+                            color: isDark ? Colors.black : Colors.white, // Invert for button content
                             iconSize: 32,
                             onPressed: () => player.togglePlayPause(),
                           ),
                         ),
                         IconButton(
                           icon: const Icon(Icons.skip_next),
-                          color: Colors.white,
+                          color: iconColor,
                           iconSize: 28,
                           onPressed: () => player.next(),
                         ),
                         IconButton(
                           icon: const Icon(Icons.repeat),
-                          color: Colors.white.withOpacity(0.7),
+                          color: secondaryTextColor,
                           onPressed: () {}, // TODO: Implement repeat
                         ),
                       ],
@@ -125,14 +131,17 @@ class DesktopPlayerBar extends StatelessWidget {
                         stream: player.player.positionStream,
                         builder: (context, snapshot) {
                           final position = snapshot.data ?? Duration.zero;
-                          final duration = player.player.duration ?? Duration.zero;
+                          final duration = player.player.duration != null && player.player.duration!.inMilliseconds > 0 
+                              ? player.player.duration! 
+                              : Duration(seconds: track.duration);
+                              
                           return SliderTheme(
                             data: SliderTheme.of(context).copyWith(
                               thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
                               overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
-                              activeTrackColor: Colors.white,
-                              inactiveTrackColor: Colors.white.withOpacity(0.3),
-                              thumbColor: Colors.white,
+                              activeTrackColor: iconColor,
+                              inactiveTrackColor: iconColor.withOpacity(0.3),
+                              thumbColor: iconColor,
                               trackHeight: 2,
                             ),
                             child: Slider(
@@ -153,7 +162,7 @@ class DesktopPlayerBar extends StatelessWidget {
                 // Volume / Extra
                 Row(
                   children: [
-                    const Icon(Icons.volume_up, color: Colors.white),
+                    Icon(Icons.volume_up, color: iconColor),
                     const SizedBox(width: 8),
                     SizedBox(
                       width: 100,
@@ -161,9 +170,9 @@ class DesktopPlayerBar extends StatelessWidget {
                         data: SliderTheme.of(context).copyWith(
                           thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
                           overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
-                          activeTrackColor: Colors.white,
-                          inactiveTrackColor: Colors.white.withOpacity(0.3),
-                          thumbColor: Colors.white,
+                          activeTrackColor: iconColor,
+                          inactiveTrackColor: iconColor.withOpacity(0.3),
+                          thumbColor: iconColor,
                         ),
                         child: StreamBuilder<double>(
                           stream: player.player.volumeStream,
@@ -182,7 +191,7 @@ class DesktopPlayerBar extends StatelessWidget {
                     const SizedBox(width: 16),
                     IconButton(
                       icon: const Icon(Icons.open_in_full),
-                      color: Colors.white,
+                      color: iconColor,
                       tooltip: "Full Screen",
                       onPressed: () {
                         Navigator.of(context).push(
