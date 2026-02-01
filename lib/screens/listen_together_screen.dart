@@ -134,37 +134,6 @@ class _ListenTogetherScreenState extends State<ListenTogetherScreen> {
                       title: Text(player.currentTrack!.title),
                       subtitle: Text(player.currentTrack!.artistName),
                     ),
-                  const Spacer(),
-                  if (player.participants.isNotEmpty) ...[
-                    const Text(
-                      'Participants',
-                      style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey),
-                    ),
-                    const SizedBox(height: 8),
-                    Container(
-                      height: 100,
-                      child: ListView.builder(
-                        itemCount: player.participants.length,
-                        itemBuilder: (context, index) {
-                          final p = player.participants[index] as dynamic;
-                          String username = 'User';
-                          try {
-                            username = p.payload['username'] ?? 'User';
-                          } catch (_) {}
-                          return Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 4),
-                            child: Row(
-                              children: [
-                                const Icon(Icons.person, size: 16, color: Colors.grey),
-                                const SizedBox(width: 8),
-                                Text(username, style: const TextStyle(fontSize: 14)),
-                              ],
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  ],
                   const SizedBox(height: 16),
                   ElevatedButton.icon(
                     onPressed: () => player.leaveRoom(),
