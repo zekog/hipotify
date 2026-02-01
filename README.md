@@ -14,7 +14,7 @@ Hipotify is a free, open-source, and ad-free music player for Android based on T
 - 💾 **Smart Downloads**: Export songs as lossless .flac files with full metadata (Android/Linux).
 - 📡 **Chromecast**: Stream to your TV with synchronized lyrics (Android only).
 - 📊 **Stats for Nerds**: Real-time technical details (bit depth, sample rate, etc.).
-- 🐧 **Linux Support**: Experimental support for Linux with AppImage builds.
+- 🐧 **Linux Support**: Dupport for Linux with AppImage builds.
 
 ## ⚙️ How It Works
 Hipotify acts as a mobile frontend that fetches lossless audio directly from TIDAL.
