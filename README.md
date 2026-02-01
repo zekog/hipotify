@@ -26,7 +26,6 @@ Hipotify acts as a mobile frontend that fetches lossless audio directly from TID
 4. Hipotify plays the audio using a high-performance playback engine.
 
 ## 🔗 Credits & Related Projects
-- [Hipotify](https://github.com/zekog/hipotify) - The source code for this project
 - [hifi](https://github.com/sachinsenal0x64/hifi) - Tidal Music integration for Subsonic/Jellyfin/Plexamp
 - [tidal-ui](https://github.com/uimaxbai/tidal-ui) - Original Inspiration for the synced lyrics and UI logic
 - [hifi-api](https://github.com/uimaxbai/hifi-api) - API that fetches the streams
