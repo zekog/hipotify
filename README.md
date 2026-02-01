@@ -11,7 +11,6 @@ Hipotify is a free, open-source, and ad-free music player for Android based on T
 - 🎨 **Artist Profiles**: Organized discographies with clear separation between Albums and Singles & EPs.
 - 🎭 **Dynamic Themes**: Premium glassmorphism aesthetic with Material You (Android 12+), Catppuccin palettes, and AMOLED black mode.
 - 🎵 **Synced Lyrics**: Premium lyrics experience with tap-to-seek functionality.
-- 📊 **Last.fm Integration**: View detailed artist biographies and info.
 - 💾 **Smart Downloads**: Export songs as lossless .flac files with full metadata (Android/Linux).
 - 📡 **Chromecast**: Stream to your TV with synchronized lyrics (Android only).
 - 📊 **Stats for Nerds**: Real-time technical details (bit depth, sample rate, etc.).
