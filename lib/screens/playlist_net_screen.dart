@@ -3,6 +3,7 @@ import '../services/supabase_playlist_service.dart';
 import '../services/hive_service.dart';
 import '../models/playlist.dart';
 import '../utils/snackbar_helper.dart';
+import 'playlist_screen.dart';
 
 class PlaylistNetScreen extends StatefulWidget {
   const PlaylistNetScreen({super.key});
@@ -63,11 +64,26 @@ class _PlaylistNetScreenState extends State<PlaylistNetScreen> {
                           child: ListTile(
                             title: Text(item['title'] ?? 'Untitled'),
                             subtitle: Text('by $username • ${item['description'] ?? ''}'),
-                            trailing: IconButton(
-                              icon: const Icon(Icons.download),
-                              onPressed: () => _downloadPlaylist(item['id'].toString()),
+                            trailing: PopupMenuButton<String>(
+                              onSelected: (value) {
+                                if (value == 'import') {
+                                  _importPlaylist(item['id'].toString());
+                                }
+                              },
+                              itemBuilder: (context) => [
+                                const PopupMenuItem(
+                                  value: 'import',
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.download),
+                                      SizedBox(width: 8),
+                                      Text('Import to Library'),
+                                    ],
+                                  ),
+                                ),
+                              ],
                             ),
-                            onTap: () => _showPlaylistDetails(item['id'].toString()),
+                            onTap: () => _openPlaylist(item['id'].toString()),
                           ),
                         );
                       },
@@ -76,8 +92,8 @@ class _PlaylistNetScreenState extends State<PlaylistNetScreen> {
     );
   }
 
-  Future<void> _downloadPlaylist(String id) async {
-    showSnackBar(context, 'Downloading playlist...');
+  Future<void> _importPlaylist(String id) async {
+    showSnackBar(context, 'Importing playlist...');
     try {
       final fullPlaylist = await SupabasePlaylistService.fetchFullPlaylist(id);
       // Generate a new ID for the local copy to avoid conflicts if edited
@@ -90,12 +106,16 @@ class _PlaylistNetScreenState extends State<PlaylistNetScreen> {
       await HiveService.playlistsBox.put(localPlaylist.id, localPlaylist.toJson());
       if (mounted) showSnackBar(context, 'Added to your Library!');
     } catch (e) {
-      if (mounted) showSnackBar(context, 'Download failed: $e');
+      if (mounted) showSnackBar(context, 'Import failed: $e');
     }
   }
 
-  void _showPlaylistDetails(String id) {
-     // TODO: Implement a preview screen if needed
-     _downloadPlaylist(id);
+  void _openPlaylist(String id) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PlaylistScreen(playlistId: id),
+      ),
+    );
   }
 }

@@ -277,7 +277,7 @@ class _ArtistScreenState extends State<ArtistScreen> {
                         final album = _albums[index];
                         return GestureDetector(
                           onTap: () => Navigator.of(context).push(
-                            MaterialPageRoute(builder: (context) => AlbumScreen(albumId: album.id)),
+                            MaterialPageRoute(builder: (context) => AlbumScreen(albumId: album.id, initialAlbum: album)),
                           ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -330,7 +330,7 @@ class _ArtistScreenState extends State<ArtistScreen> {
                         final album = _singles[index];
                         return GestureDetector(
                           onTap: () => Navigator.of(context).push(
-                            MaterialPageRoute(builder: (context) => AlbumScreen(albumId: album.id)),
+                            MaterialPageRoute(builder: (context) => AlbumScreen(albumId: album.id, initialAlbum: album)),
                           ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,

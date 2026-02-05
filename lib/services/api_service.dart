@@ -9,7 +9,9 @@ import '../models/lyrics.dart';
 import '../models/tidal_playlist.dart';
 
 class ApiService {
+  static final http.Client _client = http.Client();
   
+  static String get baseUrl => _baseUrl;
   static String get _baseUrl {
     final url = HiveService.apiUrl;
     if (url == null || url.isEmpty) {
@@ -20,100 +22,97 @@ class ApiService {
   }
 
   static Map<String, String> get _headers => {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
-    'Accept': 'application/json',
-    'X-Client': 'BiniLossless/v3.4',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+    'Accept': 'application/json, text/plain, */*',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Origin': 'https://hifi-one.spotisaver.net',
+    'Referer': 'https://hifi-one.spotisaver.net/',
+    'Sec-Fetch-Dest': 'empty',
+    'Sec-Fetch-Mode': 'cors',
+    'Sec-Fetch-Site': 'cross-site',
+    'Sec-Ch-Ua': '"Not A(Brand";v="99", "Google Chrome";v="121", "Chromium";v="121"',
+    'Sec-Ch-Ua-Mobile': '?0',
+    'Sec-Ch-Ua-Platform': '"Windows"',
   };
 
-  static Future<List<dynamic>> search(String query, {int offset = 0, int limit = 50}) async {
+  /// Generic GET request with automatic retry on 429 (Too Many Requests)
+  static Future<http.Response> getWithRetry(Uri uri, {int maxRetries = 3}) async {
+    int retryCount = 0;
+    while (true) {
+      try {
+        final response = await _client.get(uri, headers: _headers);
+        if ((response.statusCode == 429 || response.statusCode >= 500) && retryCount < maxRetries) {
+          retryCount++;
+          // Standard exponential backoff: 1s, 2s, 4s
+          final delay = Duration(seconds: pow(2, retryCount - 1).toInt());
+          print("ApiService: Received ${response.statusCode}. Retrying in ${delay.inSeconds}s (Attempt $retryCount/$maxRetries)");
+          await Future.delayed(delay);
+          continue;
+        }
+        return response;
+      } catch (e) {
+        if (retryCount >= maxRetries) rethrow;
+        retryCount++;
+        final delay = Duration(seconds: pow(2, retryCount - 1).toInt());
+        print("ApiService: Request failed ($e). Retrying in ${delay.inSeconds}s (Attempt $retryCount/$maxRetries)");
+        await Future.delayed(delay);
+      }
+    }
+  }
+
+  static Future<http.Response> _getWithRetry(Uri uri, {int maxRetries = 5}) => getWithRetry(uri, maxRetries: maxRetries);
+
+  static Future<List<dynamic>> search(String query, {int offset = 0, int limit = 50, String? searchType}) async {
     try {
       final List<dynamic> allItems = [];
       final Set<String> seenIds = {};
+      final normalizedQuery = query.toLowerCase().trim();
 
       Future<void> performSearch(String searchTerms, String typeParam, [String? inferredType]) async {
         final encoded = Uri.encodeComponent(searchTerms);
-        final uri = Uri.parse('$_baseUrl/search/?$typeParam=$encoded&offset=$offset&index=$offset&limit=$limit');
+        final uri = Uri.parse('$_baseUrl/search?$typeParam=$encoded&offset=$offset&index=$offset&limit=$limit');
         print("API Search ($typeParam) for '$searchTerms': $uri");
-        final response = await http.get(uri, headers: _headers);
+        final response = await _getWithRetry(uri);
 
         if (response.statusCode == 200) {
           final data = jsonDecode(response.body);
           final resultData = data['data'] ?? data;
           
-          void scan(dynamic value, [String? currentInferredType]) {
-            if (value == null) return;
-            if (value is List) {
-              for (var item in value) scan(item, currentInferredType);
-              return;
-            }
-            if (value is Map) {
-              final item = value['item'] ?? value;
-              String? type = item['type']?.toString().toLowerCase() ?? currentInferredType;
-              final id = item['id']?.toString() ?? item['uuid']?.toString();
-
-              if (id != null) {
-                if (type == null || type == 'main' || type == 'contributor') {
-                  if (item['duration'] != null) type = 'track';
-                  else if (item['artistRoles'] != null || item['artistTypes'] != null || item['picture'] != null) type = 'artist';
-                  else if (item['uuid'] != null || item['creator'] != null) type = 'playlist';
-                  else if (item['cover'] != null || item['releaseDate'] != null || item['numberOfTracks'] != null) type = 'album';
-                  else if (item['title'] != null && item['artist'] != null) type = 'track';
-                }
-
-                // Refine type based on specific fields
-                if (item['uuid'] != null || item['creator'] != null) {
-                  type = 'playlist';
-                } else if (item['numberOfTracks'] != null && type != 'playlist') {
-                  type = 'album';
-                } else if (item['duration'] != null && type != 'album' && type != 'playlist') {
-                  type = 'track';
-                }
-
-                if (type == 'track' || type == 'song' || type == 'artist' || type == 'album' || type == 'playlist') {
-                  final uniqueId = '${type}_$id';
-                  if (!seenIds.contains(uniqueId)) {
-                    seenIds.add(uniqueId);
-                    if (type == 'artist') allItems.add(Artist.fromJson(item));
-                    else if (type == 'album') allItems.add(Album.fromJson(item));
-                    else if (type == 'playlist') allItems.add(TidalPlaylist.fromJson(item));
-                    else allItems.add(Track.fromJson(item));
-                  }
-                }
-              }
-
-              value.forEach((key, val) {
-                if (key == 'item') return;
-                String? nextInferredType = currentInferredType;
-                if (key == 'artists') nextInferredType = 'artist';
-                else if (key == 'albums') nextInferredType = 'album';
-                else if (key == 'tracks' || key == 'songs') nextInferredType = 'track';
-                else if (key == 'playlists') nextInferredType = 'playlist';
-                scan(val, nextInferredType);
-              });
-            }
-          }
-          scan(resultData, inferredType);
+          _scanGeneric(resultData, 
+            allItems: allItems, 
+            seenIds: seenIds, 
+            inferredType: inferredType
+          );
         }
       }
 
-      final List<Future<void>> searchTasks = [
-        performSearch(query, 's', 'track'),
-        performSearch(query, 'a', 'artist'),
-        performSearch(query, 'al', 'album'),
-        performSearch(query, 'p', 'playlist'),
-      ];
+      final List<Future<void>> searchTasks = [];
+      
+      if (searchType == null || searchType == 'track') {
+        searchTasks.add(performSearch(query, 's', 'track'));
+      }
+      if (searchType == null || searchType == 'artist') {
+        searchTasks.add(performSearch(query, 'a', 'artist'));
+      }
+      if (searchType == null || searchType == 'album') {
+        searchTasks.add(performSearch(query, 'al', 'album'));
+      }
+      if (searchType == null || searchType == 'playlist') {
+        searchTasks.add(performSearch(query, 'p', 'playlist'));
+      }
 
-      // 0. MusicBrainz Mapping for Latin Queries
-      final normalizedQuery = query.toLowerCase().trim();
-      final bool queryIsLatin = RegExp(r'^[a-zA-Z0-9\s\p{P}]+$', unicode: true).hasMatch(normalizedQuery);
-      if (queryIsLatin) {
-        final originalName = await _getMusicBrainzOriginalName(query);
-        if (originalName != null && originalName.toLowerCase() != normalizedQuery) {
-          print("ApiService: MusicBrainz found original name: $originalName");
-          searchTasks.add(performSearch(originalName, 's', 'track'));
-          searchTasks.add(performSearch(originalName, 'a', 'artist'));
-          searchTasks.add(performSearch(originalName, 'al', 'album'));
-          searchTasks.add(performSearch(originalName, 'p', 'playlist'));
+      // 0. MusicBrainz Mapping for Latin Queries (Only for generic searches)
+      if (searchType == null) {
+        final queryIsLatin = RegExp(r'^[a-zA-Z0-9\s\p{P}]+$', unicode: true).hasMatch(normalizedQuery);
+        if (queryIsLatin) {
+          final originalName = await _getMusicBrainzOriginalName(query);
+          if (originalName != null && originalName.toLowerCase() != normalizedQuery) {
+            print("ApiService: MusicBrainz found original name: $originalName");
+            searchTasks.add(performSearch(originalName, 's', 'track'));
+            searchTasks.add(performSearch(originalName, 'a', 'artist'));
+            searchTasks.add(performSearch(originalName, 'al', 'album'));
+            searchTasks.add(performSearch(originalName, 'p', 'playlist'));
+          }
         }
       }
 
@@ -290,20 +289,21 @@ class ApiService {
   }
 
   static Future<Artist> getArtistDetails(String artistId) async {
+    // Try Full request first
     final uri = Uri.parse('$_baseUrl/artist?f=$artistId');
-    final response = await http.get(uri, headers: _headers);
+    final response = await _getWithRetry(uri);
     
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
-      print("DEBUG: Raw Artist Data: $data"); // Check for bio/description
       final artistData = _findArtistInResponse(data, artistId);
       if (artistData != null) {
         return artistData;
       }
     }
 
+    // Fallback to id= if f= fails or doesn't return full data
     final fallbackUri = Uri.parse('$_baseUrl/artist?id=$artistId');
-    final fallbackResponse = await http.get(fallbackUri, headers: _headers);
+    final fallbackResponse = await _getWithRetry(fallbackUri);
     if (fallbackResponse.statusCode == 200) {
       final data = jsonDecode(fallbackResponse.body);
       final artistData = _findArtistInResponse(data, artistId);
@@ -341,37 +341,49 @@ class ApiService {
   }
 
   static Future<List<Track>> getArtistTopTracks(String artistId) async {
-    // Top tracks are usually in the main artist response modules
     final uri = Uri.parse('$_baseUrl/artist?f=$artistId');
-    final response = await http.get(uri, headers: _headers);
+    final response = await _getWithRetry(uri);
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
       
-      // Try to find "Top Tracks" module first to avoid grabbing all tracks
+      // Module search
       final modules = data['modules'] ?? data['data']?['modules'];
       if (modules is List) {
         for (var module in modules) {
            final type = module['type']?.toString().toUpperCase();
            final title = module['title']?.toString().toLowerCase();
            
-           if (type == 'TRACK_LIST' || type == 'TOP_TRACKS' || (title != null && title.contains('top'))) {
-             print("ApiService: Found Top Tracks module: ${module['title']}");
-             return _scanForTracks(module);
+           if (type == 'TRACK_LIST' || type == 'TOP_TRACKS' || (title != null && (title.contains('top') || title.contains('utwory') || title.contains('popularne')))) {
+             final tracks = scanForTracks(module);
+             if (tracks.isNotEmpty) {
+               return tracks;
+             }
            }
         }
       }
+      
+      final tracks = scanForTracks(data);
+      if (tracks.isNotEmpty) {
+        return tracks;
+      }
+    }
 
-      return _scanForTracks(data);
+    // Fallback to id=
+    final fallbackUri = Uri.parse('$_baseUrl/artist?id=$artistId');
+    final fallbackResponse = await _getWithRetry(fallbackUri);
+    if (fallbackResponse.statusCode == 200) {
+      final data = jsonDecode(fallbackResponse.body);
+      return scanForTracks(data);
     }
     return [];
   }
 
   static Future<Album> getAlbumDetails(String albumId) async {
     final uri = Uri.parse('$_baseUrl/album?id=$albumId');
-    final response = await http.get(uri, headers: _headers);
+    final response = await _getWithRetry(uri);
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
-      final albumData = _findAlbumInResponse(data, albumId);
+      final albumData = findAlbumInResponse(data, albumId);
       if (albumData != null) {
         return albumData;
       }
@@ -379,7 +391,7 @@ class ApiService {
     throw Exception("Failed to get album details (Status: ${response.statusCode})");
   }
 
-  static Album? _findAlbumInResponse(dynamic data, String albumId) {
+  static Album? findAlbumInResponse(dynamic data, String albumId) {
     Album? foundAlbum;
     void scan(dynamic value) {
       if (foundAlbum != null || value == null) {
@@ -397,7 +409,11 @@ class ApiService {
           foundAlbum = Album.fromJson(item);
           return;
         }
-        value.forEach((key, val) => scan(val));
+        value.forEach((key, val) {
+          if (key != 'item') {
+            scan(val);
+          }
+        });
       }
     }
     scan(data['data'] ?? data);
@@ -406,17 +422,17 @@ class ApiService {
 
   static Future<List<Track>> getAlbumTracks(String albumId) async {
     final uri = Uri.parse('$_baseUrl/album?id=$albumId');
-    final response = await http.get(uri, headers: _headers);
+    final response = await _getWithRetry(uri);
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
-      return _scanForTracks(data);
+      return scanForTracks(data);
     }
     return [];
   }
 
   static Future<TidalPlaylist> getPlaylistDetails(String playlistId) async {
-    final uri = Uri.parse('$_baseUrl/playlist/?id=$playlistId');
-    final response = await http.get(uri, headers: _headers);
+    final uri = Uri.parse('$_baseUrl/playlist?id=$playlistId');
+    final response = await _getWithRetry(uri);
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
       final playlistData = data['playlist'] ?? data['data'] ?? data;
@@ -426,152 +442,214 @@ class ApiService {
   }
 
   static Future<List<Track>> getPlaylistTracks(String playlistId) async {
-    final uri = Uri.parse('$_baseUrl/playlist/?id=$playlistId');
-    final response = await http.get(uri, headers: _headers);
+    final uri = Uri.parse('$_baseUrl/playlist?id=$playlistId');
+    final response = await _getWithRetry(uri);
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
-      return _scanForTracks(data);
+      return scanForTracks(data);
     }
     return [];
   }
 
   static Future<List<Album>> getArtistAlbums(String artistId) async {
     final uri = Uri.parse('$_baseUrl/artist?f=$artistId');
-    final response = await http.get(uri, headers: _headers);
+    final response = await _getWithRetry(uri);
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
-      return _scanForAlbums(data);
+      
+      // Try to find modules for albums too
+      final modules = data['modules'] ?? data['data']?['modules'];
+      if (modules is List) {
+        for (var module in modules) {
+           final type = module['type']?.toString().toUpperCase();
+           final title = module['title']?.toString().toLowerCase();
+           
+           if (type == 'ALBUM_LIST' || (title != null && (title.contains('album') || title.contains('singl') || title.contains('wydania')))) {
+             final albums = scanForAlbums(module);
+             if (albums.isNotEmpty) {
+               return albums;
+             }
+           }
+        }
+      }
+
+      final albums = scanForAlbums(data);
+      if (albums.isNotEmpty) {
+        return albums;
+      }
+    }
+
+    // Fallback to id=
+    final fallbackUri = Uri.parse('$_baseUrl/artist?id=$artistId');
+    final fallbackResponse = await _getWithRetry(fallbackUri);
+    if (fallbackResponse.statusCode == 200) {
+      final data = jsonDecode(fallbackResponse.body);
+      return scanForAlbums(data);
     }
     return [];
   }
 
-  static List<Track> _scanForTracks(dynamic data) {
-    final List<Track> tracks = [];
+  static List<Track> scanForTracks(dynamic data) {
+    if (data == null) return [];
+    final List<dynamic> allItems = [];
     final Set<String> seenIds = {};
-
-    void scan(dynamic value) {
-      if (value == null) {
-        return;
-      }
-      if (value is List) {
-        for (var item in value) {
-          scan(item);
-        }
-        return;
-      }
-      if (value is Map) {
-        final item = value['item'] ?? value;
-        final type = item['type']?.toString().toLowerCase();
-        final id = item['id']?.toString();
-        
-        // A track must have an ID and either type 'track' or a duration
-        // CRITICAL: Ensure it's NOT an album (albums sometimes have duration too)
-        bool isAlbum = type == 'album' || item['numberOfTracks'] != null;
-        bool isTrack = id != null && (type == 'track' || type == 'song' || (item['duration'] != null && !isAlbum));
-
-        if (isTrack) {
-          if (!seenIds.contains(id)) {
-            seenIds.add(id);
-            tracks.add(Track.fromJson(item));
-          }
-        }
-        
-        // Always scan children to find nested tracks (e.g. in an album object)
-        value.forEach((key, val) {
-          if (key != 'item') scan(val);
-        });
-      }
-    }
-
-    scan(data['data'] ?? data);
-    return tracks;
+    _scanGeneric(data is Map && data.containsKey('data') ? data['data'] : data, 
+      allItems: allItems, 
+      seenIds: seenIds, 
+      inferredType: 'track'
+    );
+    return allItems.whereType<Track>().toList();
   }
 
-  static List<Album> _scanForAlbums(dynamic data) {
-    final List<Album> albums = [];
+  static List<Album> scanForAlbums(dynamic data) {
+    if (data == null) return [];
+    final List<dynamic> allItems = [];
     final Set<String> seenIds = {};
+    _scanGeneric(data is Map && data.containsKey('data') ? data['data'] : data, 
+      allItems: allItems, 
+      seenIds: seenIds, 
+      inferredType: 'album'
+    );
+    return allItems.whereType<Album>().toList();
+  }
 
-    void scan(dynamic value) {
-      if (value == null) {
-        return;
+  /// Unified scanning logic for search and detail screens
+  static void _scanGeneric(dynamic value, {
+    required List<dynamic> allItems, 
+    required Set<String> seenIds, 
+    String? inferredType
+  }) {
+    if (value == null) return;
+    
+    if (value is List) {
+      for (var item in value) {
+        _scanGeneric(item, allItems: allItems, seenIds: seenIds, inferredType: inferredType);
       }
-      if (value is List) {
-        for (var item in value) {
-          scan(item);
-        }
-        return;
-      }
-      if (value is Map) {
-        final item = value['item'] ?? value;
-        final type = item['type']?.toString().toLowerCase();
-        final id = item['id']?.toString();
-        
-        // An album must have an ID and either type 'album' or a cover/numberOfTracks
-        // CRITICAL: Ensure it's NOT a track
-        bool isTrack = type == 'track' || type == 'song' || (item['duration'] != null && item['numberOfTracks'] == null);
-        bool isAlbum = id != null && (type == 'album' || item['numberOfTracks'] != null || (item['cover'] != null && !isTrack));
+      return;
+    }
+    
+    if (value is Map) {
+      final item = value['item'] ?? value;
+      String? type = item['type']?.toString().toLowerCase() ?? inferredType;
+      final id = item['id']?.toString() ?? item['uuid']?.toString();
 
-        if (isAlbum) {
-          if (!seenIds.contains(id)) {
-            seenIds.add(id);
-            albums.add(Album.fromJson(item));
+      if (id != null) {
+        // 1. Initial Type Inference
+        if (type == null || type == 'main' || type == 'contributor' || type == 'media' || type == 'product') {
+          if (item['duration'] != null) {
+            type = 'track';
+          } else if (item['artistRoles'] != null || item['artistTypes'] != null || item['picture'] != null) {
+            type = 'artist';
+          } else if (item['uuid'] != null || item['creator'] != null) {
+            type = 'playlist';
+          } else if (item['cover'] != null || item['releaseDate'] != null || item['numberOfTracks'] != null) {
+            type = 'album';
+          } else if (item['title'] != null && item['artist'] != null) {
+            type = 'track';
           }
         }
-        
-        // Always scan children
-        value.forEach((key, val) {
-          if (key != 'item') scan(val);
-        });
-      }
-    }
 
-    scan(data['data'] ?? data);
-    return albums;
+        // 2. Structural Refinement
+        if (item['uuid'] != null || item['creator'] != null) {
+          type = 'playlist';
+        } else if (item['numberOfTracks'] != null && type != 'playlist') {
+          type = 'album';
+        } else if (item['duration'] != null && type != 'album' && type != 'playlist') {
+          type = 'track';
+        }
+
+        // 3. Normalized Mapping
+        if (type == 'song') type = 'track';
+        if (type == 'release') type = 'album';
+
+        // 4. Object Creation
+        if (type == 'track' || type == 'artist' || type == 'album' || type == 'playlist') {
+          final uniqueId = '${type}_$id';
+          if (!seenIds.contains(uniqueId)) {
+            seenIds.add(uniqueId);
+            try {
+              if (type == 'artist') {
+                allItems.add(Artist.fromJson(item));
+              } else if (type == 'album') {
+                allItems.add(Album.fromJson(item));
+              } else if (type == 'playlist') {
+                allItems.add(TidalPlaylist.fromJson(item));
+              } else if (type == 'track') {
+                allItems.add(Track.fromJson(item));
+              }
+            } catch (e) {
+              print("ApiService: Error parsing $type ($id): $e");
+            }
+          }
+        }
+      }
+
+      // 5. Recursive Scan
+      value.forEach((key, val) {
+        if (key == 'item' || key == 'links') {
+          return;
+        }
+        
+        // If we found an object and it IS a track/artist/etc, 
+        // we should reset inference for its children.
+        String? nextInferredType = (id != null) ? null : inferredType;
+        
+        // Key-based hints are more reliable than previous inference
+        final lowerKey = key.toLowerCase();
+        if (lowerKey.contains('artist')) {
+          nextInferredType = 'artist';
+        } else if (lowerKey.contains('album') || lowerKey == 'releases' || lowerKey == 'albums') {
+          nextInferredType = 'album';
+        } else if (lowerKey.contains('track') || lowerKey.contains('song') || lowerKey == 'toptracks' || lowerKey == 'items' || lowerKey == 'contents') {
+          nextInferredType = 'track';
+        } else if (lowerKey.contains('playlist')) {
+          nextInferredType = 'playlist';
+        }
+        
+        _scanGeneric(val, allItems: allItems, seenIds: seenIds, inferredType: nextInferredType);
+      });
+    }
   }
 
   static Future<Map<String, dynamic>> getStreamMetadata(String trackId, {String? quality}) async {
     final targetQuality = quality ?? HiveService.audioQuality;
-    final uri = Uri.parse('$_baseUrl/track?id=$trackId&quality=$targetQuality');
-    print("API GetStream: $uri");
+    final qualities = ['HI_RES_LOSSLESS', 'LOSSLESS', 'HIGH', 'LOW'];
     
-    var response = await http.get(uri, headers: _headers);
-
-    if (response.statusCode != 200) {
-      print("API GetStream failed with ${response.statusCode}");
-      
-      // Fallback sequence
-      final qualities = ['HI_RES_LOSSLESS', 'LOSSLESS', 'HIGH', 'LOW'];
-      // Remove current quality and any higher qualities
-      final currentIndex = qualities.indexOf(targetQuality);
-      if (currentIndex == -1) {
-         // If unknown quality, just try all from top
-         // But usually we should match the requested one first.
-      }
-      
-      final fallbackQualities = currentIndex != -1 ? qualities.sublist(currentIndex + 1) : qualities;
-
-      for (final fallbackQuality in fallbackQualities) {
-        print("Falling back to $fallbackQuality quality...");
-        final fallbackUri = Uri.parse('$_baseUrl/track?id=$trackId&quality=$fallbackQuality');
-        print("API GetStream (Fallback): $fallbackUri");
-        final fallbackResponse = await http.get(fallbackUri, headers: _headers);
-        
-        if (fallbackResponse.statusCode == 200) {
-          final data = jsonDecode(fallbackResponse.body);
-          final trackData = data['data'] ?? data;
-          return _processStreamData(trackData);
-        } else {
-          print("API GetStream (Fallback) failed with ${fallbackResponse.statusCode}");
-          response = fallbackResponse; // Keep track of the last failed response
-        }
-      }
-      throw Exception("Failed to get stream metadata (Status: ${response.statusCode})");
+    // Explicitly add current target quality at the start if not HI_RES_LOSSLESS
+    final List<String> tryQualities = [targetQuality];
+    for (var q in qualities) {
+      if (q != targetQuality) tryQualities.add(q);
     }
 
-    final data = jsonDecode(response.body);
-    final trackData = data['data'] ?? data;
+    http.Response? lastResponse;
 
-    return _processStreamData(trackData);
+    for (final q in tryQualities) {
+      final uri = Uri.parse('$_baseUrl/track?id=$trackId&quality=$q');
+      print("API GetStream: $uri");
+      
+      try {
+        final response = await _getWithRetry(uri);
+        lastResponse = response;
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body);
+          // Ensure trackData is mutable and strictly a Map
+          final trackData = Map<String, dynamic>.from(data['data'] ?? data);
+          
+          // CRITICAL: Ensure ID is preserved. Some endpoints might not return it in the body.
+          if (trackData['id'] == null) {
+             print("ApiService: ID missing in stream response, injecting $trackId");
+             trackData['id'] = trackId;
+          }
+          
+          return _processStreamData(trackData);
+        }
+        print("API GetStream for $q failed with ${response.statusCode}");
+      } catch (e) {
+        print("API GetStream for $q error: $e");
+      }
+    }
+
+    throw Exception("Failed to get stream metadata (Status: ${lastResponse?.statusCode ?? 'Unknown'})");
   }
 
   static Map<String, dynamic> _processStreamData(Map<String, dynamic> trackData) {
@@ -659,9 +737,9 @@ class ApiService {
 
   static Future<Lyrics?> getLyrics(String trackId) async {
     try {
-      final uri = Uri.parse('$_baseUrl/lyrics/?id=$trackId');
+      final uri = Uri.parse('$_baseUrl/lyrics?id=$trackId');
       print("API GetLyrics: $uri");
-      final response = await http.get(uri, headers: _headers);
+      final response = await _getWithRetry(uri);
       print("API GetLyrics Status: ${response.statusCode}");
       print("API GetLyrics Body: ${response.body}");
       
@@ -690,7 +768,7 @@ class ApiService {
     try {
       // MusicBrainz API requires a User-Agent
       final uri = Uri.parse('https://musicbrainz.org/ws/2/artist/?query=${Uri.encodeComponent(query)}&fmt=json');
-      final response = await http.get(uri, headers: {
+      final response = await _client.get(uri, headers: {
         'User-Agent': 'Hipotify/1.0.0 ( mailto:zek@example.com )',
         'Accept': 'application/json',
       });
@@ -710,6 +788,139 @@ class ApiService {
       }
     } catch (e) {
       print("MusicBrainz mapping error: $e");
+    }
+    return null;
+  }
+
+  /// Fetches metadata from a Spotify link using oEmbed API.
+  /// Returns a map with 'title', 'type', and optionally 'artist'.
+  static Future<Map<String, String>?> getSpotifyMetadata(String spotifyUrl) async {
+    try {
+      final oembedUrl = 'https://open.spotify.com/oembed?url=${Uri.encodeComponent(spotifyUrl)}';
+      final response = await _client.get(Uri.parse(oembedUrl), headers: {
+        'User-Agent': 'Hipotify/1.0.0',
+        'Accept': 'application/json',
+      });
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final title = data['title'] as String?;
+        final type = data['type'] as String?; // "rich" for tracks, but we infer from URL
+        
+        if (title != null) {
+          // Title format varies:
+          // Track: "Song Name - song and lyrics by Artist Name | Spotify" or "Song Name"
+          // Album: "Album Name - Album by Artist Name | Spotify"
+          // Artist: "Artist Name | Spotify"
+          
+          String cleanTitle = title;
+          String? artist;
+          
+          // Remove " | Spotify" suffix
+          if (cleanTitle.contains(' | Spotify')) {
+            cleanTitle = cleanTitle.split(' | Spotify')[0];
+          }
+          
+          // Extract artist from formats like "Song - song and lyrics by Artist"
+          final lyricsMatch = RegExp(r'^(.+?)\s*[-–]\s*song and lyrics by\s+(.+)$', caseSensitive: false).firstMatch(cleanTitle);
+          if (lyricsMatch != null) {
+            cleanTitle = lyricsMatch.group(1)!.trim();
+            artist = lyricsMatch.group(2)!.trim();
+          } else {
+            // Try "Album - Album by Artist" format
+            final albumMatch = RegExp(r'^(.+?)\s*[-–]\s*Album by\s+(.+)$', caseSensitive: false).firstMatch(cleanTitle);
+            if (albumMatch != null) {
+              cleanTitle = albumMatch.group(1)!.trim();
+              artist = albumMatch.group(2)!.trim();
+            } else {
+              // Try generic "Title by Artist" format
+              final byMatch = RegExp(r'^(.+?)\s+by\s+(.+)$', caseSensitive: false).firstMatch(cleanTitle);
+              if (byMatch != null) {
+                cleanTitle = byMatch.group(1)!.trim();
+                artist = byMatch.group(2)!.trim();
+              }
+            }
+          }
+          
+          return {
+            'title': cleanTitle,
+            if (artist != null) 'artist': artist,
+            'type': type ?? 'unknown',
+          };
+        }
+      }
+    } catch (e) {
+      print("Spotify oEmbed error: $e");
+    }
+    return null;
+  }
+
+  /// Resolves a Spotify URL to a Tidal Track ID using Odesli (Songlink)
+  /// Returns a Map with 'id', 'title', 'artist', 'cover' if found.
+  static Future<Map<String, dynamic>?> resolveTidalTrackFromOdesli(String spotifyUrl) async {
+    try {
+      print("ApiService: Resolving Tidal ID via Odesli for $spotifyUrl");
+      final uri = Uri.parse('https://api.song.link/v1-alpha.1/links?url=${Uri.encodeComponent(spotifyUrl)}');
+      final response = await _client.get(uri);
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        
+        // 1. Find the Tidal entity info
+        Map<String, dynamic>? tidalEntity;
+        
+        final entities = data['entitiesByUniqueId'] as Map<String, dynamic>?;
+        if (entities != null) {
+          for (final key in entities.keys) {
+            if (key.startsWith('TIDAL_SONG::')) {
+              tidalEntity = entities[key];
+              break;
+            }
+          }
+        }
+
+        String? id;
+        String? title;
+        String? artist;
+        String? cover;
+
+        if (tidalEntity != null) {
+          id = tidalEntity['id']?.toString();
+          title = tidalEntity['title']?.toString();
+          artist = tidalEntity['artistName']?.toString();
+          cover = tidalEntity['thumbnailUrl']?.toString();
+        }
+
+        // 2. If ID still missing, try linksByPlatform
+        if (id == null) {
+          final links = data['linksByPlatform'] as Map<String, dynamic>?;
+          if (links != null && links.containsKey('tidal')) {
+             final tidalLink = links['tidal'];
+             final uniqueId = tidalLink['entityUniqueId'] as String?;
+             
+             if (uniqueId != null && uniqueId.startsWith('TIDAL_SONG::')) {
+               id = uniqueId.split('::').last;
+             } else {
+               final url = tidalLink['url'] as String?;
+               if (url != null) {
+                  final idMatch = RegExp(r'tidal\.com/track/([0-9]+)').firstMatch(url);
+                  if (idMatch != null) id = idMatch.group(1);
+               }
+             }
+          }
+        }
+
+        if (id != null) {
+           return {
+             'id': id,
+             'title': title ?? 'Unknown Title',
+             'artist': artist ?? 'Unknown Artist',
+             'cover': cover,
+           };
+        }
+      }
+    } catch (e) {
+      print("Odesli resolution error: $e");
     }
     return null;
   }

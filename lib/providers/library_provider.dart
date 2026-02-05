@@ -3,6 +3,8 @@ import '../models/track.dart';
 import '../models/playlist.dart';
 import '../models/tidal_playlist.dart';
 import '../services/hive_service.dart';
+import '../services/supabase_playlist_service.dart';
+import '../services/auth_service.dart';
 
 class LibraryProvider with ChangeNotifier {
   List<Track> _likedSongs = [];
@@ -59,27 +61,68 @@ class LibraryProvider with ChangeNotifier {
 
   Future<Playlist> createPlaylist(String name) async {
     final trimmed = name.trim();
-    if (trimmed.isEmpty) {
-      throw Exception('Playlist name cannot be empty');
-    }
+    final userId = AuthService.isLoggedIn ? AuthService.currentUser?.id : null;
 
     final playlist = Playlist(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       name: trimmed,
       tracks: const [],
+      ownerId: userId,
     );
     await HiveService.savePlaylist(playlist);
+    
+    if (AuthService.isLoggedIn) {
+      _handleBackgroundSync(playlist);
+    }
+    
     _loadLibrary();
     return playlist;
   }
 
+  Future<void> _handleBackgroundSync(Playlist playlist) async {
+    try {
+      if (AuthService.isLoggedIn && playlist.ownerId == AuthService.currentUser?.id) {
+        await SupabasePlaylistService.publishPlaylist(playlist);
+      }
+    } catch (e) {
+      print("LibraryProvider: Background sync failed: $e");
+    }
+  }
+
+  Future<void> syncAllWithSupabase() async {
+    if (!AuthService.isLoggedIn) return;
+    
+    try {
+      final remotePlaylists = await SupabasePlaylistService.getUserPlaylists();
+      for (var remote in remotePlaylists) {
+        // Simple merge: remote wins for owned playlists
+        await HiveService.savePlaylist(remote);
+      }
+      _loadLibrary();
+    } catch (e) {
+      print("LibraryProvider: Sync all failed: $e");
+    }
+  }
+
   Future<void> deletePlaylist(String playlistId) async {
+    final playlist = getPlaylistById(playlistId);
+    if (playlist != null && AuthService.isLoggedIn && playlist.ownerId == AuthService.currentUser?.id) {
+      try {
+        await SupabasePlaylistService.deletePlaylist(playlistId);
+      } catch (e) {
+        print("LibraryProvider: Failed to delete remote playlist: $e");
+      }
+    }
+    
     await HiveService.deletePlaylist(playlistId);
     _loadLibrary();
   }
 
   Future<void> updatePlaylist(Playlist playlist) async {
     await HiveService.savePlaylist(playlist);
+    if (AuthService.isLoggedIn && playlist.ownerId == AuthService.currentUser?.id) {
+      _handleBackgroundSync(playlist);
+    }
     _loadLibrary();
   }
 
@@ -101,9 +144,14 @@ class LibraryProvider with ChangeNotifier {
       id: playlist.id,
       name: playlist.name,
       tracks: tracks,
+      ownerId: playlist.ownerId,
+      isPublic: playlist.isPublic,
     );
 
     await HiveService.savePlaylist(updated);
+    if (AuthService.isLoggedIn && updated.ownerId == AuthService.currentUser?.id) {
+      _handleBackgroundSync(updated);
+    }
     _loadLibrary();
   }
 
@@ -120,9 +168,14 @@ class LibraryProvider with ChangeNotifier {
       id: playlist.id,
       name: playlist.name,
       tracks: [...playlist.tracks, track],
+      ownerId: playlist.ownerId,
+      isPublic: playlist.isPublic,
     );
 
     await HiveService.savePlaylist(updated);
+    if (AuthService.isLoggedIn && updated.ownerId == AuthService.currentUser?.id) {
+      _handleBackgroundSync(updated);
+    }
     _loadLibrary();
   }
 
@@ -139,9 +192,14 @@ class LibraryProvider with ChangeNotifier {
       tracks: exists
           ? playlist.tracks.where((t) => t.id != track.id).toList()
           : [...playlist.tracks, track],
+      ownerId: playlist.ownerId,
+      isPublic: playlist.isPublic,
     );
 
     await HiveService.savePlaylist(updated);
+    if (AuthService.isLoggedIn && updated.ownerId == AuthService.currentUser?.id) {
+      _handleBackgroundSync(updated);
+    }
     _loadLibrary();
     return !exists; // Return true if added, false if removed
   }
@@ -162,9 +220,14 @@ class LibraryProvider with ChangeNotifier {
       id: playlist.id,
       name: playlist.name,
       tracks: playlist.tracks.where((t) => t.id != trackId).toList(),
+      ownerId: playlist.ownerId,
+      isPublic: playlist.isPublic,
     );
 
     await HiveService.savePlaylist(updated);
+    if (AuthService.isLoggedIn && updated.ownerId == AuthService.currentUser?.id) {
+      _handleBackgroundSync(updated);
+    }
     _loadLibrary();
   }
 

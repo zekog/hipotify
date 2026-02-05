@@ -1,4 +1,5 @@
 import 'dart:ui';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../models/album.dart';
@@ -13,7 +14,15 @@ import 'main_screen.dart';
 
 class AlbumScreen extends StatefulWidget {
   final String albumId;
-  const AlbumScreen({super.key, required this.albumId});
+  final Album? initialAlbum;
+  final List<Track>? initialTracks;
+  
+  const AlbumScreen({
+    super.key, 
+    required this.albumId, 
+    this.initialAlbum,
+    this.initialTracks,
+  });
 
   @override
   State<AlbumScreen> createState() => _AlbumScreenState();
@@ -36,15 +45,40 @@ class _AlbumScreenState extends State<AlbumScreen> {
 
   Future<void> _fetchData() async {
     try {
-      final album = await ApiService.getAlbumDetails(widget.albumId);
-      // Tracks are now fetched using more robust scanning (handles nested tracks in album details)
-      final tracks = await ApiService.getAlbumTracks(widget.albumId);
+      Album? album = widget.initialAlbum;
+      List<Track> tracks = widget.initialTracks ?? [];
+
+      if (album == null || tracks.isEmpty) {
+        final uri = Uri.parse('${ApiService.baseUrl}/album?id=${widget.albumId}');
+        final response = await ApiService.getWithRetry(uri);
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body);
+          album ??= ApiService.findAlbumInResponse(data, widget.albumId);
+          tracks = ApiService.scanForTracks(data);
+        }
+      }
+
+      // Synthesis fallback if we have tracks but no album metadata
+      if (album == null && tracks.isNotEmpty) {
+        final firstTrack = tracks[0];
+        album = Album(
+          id: widget.albumId,
+          title: firstTrack.albumTitle,
+          artistName: firstTrack.artistName,
+          artistId: firstTrack.artistId,
+          coverUuid: firstTrack.albumCoverUuid,
+        );
+      }
+
+      if (album == null && tracks.isEmpty) {
+        throw Exception("Could not fetch album details or tracks");
+      }
+
       setState(() {
         _album = album;
         _tracks = tracks;
         _isLoading = false;
       });
-      print("AlbumScreen: Found ${tracks.length} tracks for album ${album.title}");
     } catch (e) {
       print("Error fetching album data: $e");
       if (mounted) {

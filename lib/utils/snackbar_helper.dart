@@ -63,7 +63,6 @@ void showSnackBar(BuildContext context, String message, {Duration? duration}) {
   if (overlay == null) {
     // Fallback to context overlay if navigatorKey is not available
     final contextOverlay = Overlay.of(context);
-    if (contextOverlay == null) return;
     _showTopSnackBar(contextOverlay, message, duration);
     return;
   }
@@ -76,7 +75,19 @@ void _showTopSnackBar(OverlayState overlay, String message, Duration? duration) 
   final fadeOutDuration = const Duration(milliseconds: 300);
   
   late OverlayEntry overlayEntry;
-  
+  bool removed = false;
+  void safeRemove() {
+    if (removed) return;
+    try {
+      if (overlayEntry.mounted) {
+        overlayEntry.remove();
+        removed = true;
+      }
+    } catch (e) {
+      print("SnackbarHelper: Error removing overlay: $e");
+    }
+  }
+
   overlayEntry = OverlayEntry(
     opaque: false,
     builder: (context) => Positioned(
@@ -93,11 +104,7 @@ void _showTopSnackBar(OverlayState overlay, String message, Duration? duration) 
               message: message,
               duration: actualDuration,
               fadeOutDuration: fadeOutDuration,
-              onDismiss: () {
-                if (overlayEntry.mounted) {
-                  overlayEntry.remove();
-                }
-              },
+              onDismiss: safeRemove,
             ),
           ),
         ),
@@ -108,11 +115,7 @@ void _showTopSnackBar(OverlayState overlay, String message, Duration? duration) 
   overlay.insert(overlayEntry);
 
   // Remove overlay entry after duration + fade out time (backup removal)
-  Future.delayed(actualDuration + fadeOutDuration, () {
-    if (overlayEntry.mounted) {
-      overlayEntry.remove();
-    }
-  });
+  Future.delayed(actualDuration + fadeOutDuration + const Duration(milliseconds: 500), safeRemove);
 }
 
 class _AnimatedSnackBar extends StatefulWidget {
@@ -190,7 +193,7 @@ class _AnimatedSnackBarState extends State<_AnimatedSnackBar>
             borderRadius: BorderRadius.circular(8),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.3),
+                color: Colors.black.withValues(alpha: 0.3),
                 blurRadius: 8,
                 offset: const Offset(0, 4),
               ),

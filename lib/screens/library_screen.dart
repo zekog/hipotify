@@ -11,6 +11,7 @@ import '../services/hive_service.dart';
 import '../utils/snackbar_helper.dart';
 import 'playlist_screen.dart';
 import 'playlist_net_screen.dart';
+import 'playlist_converter_screen.dart';
 import 'listen_together_screen.dart';
 import '../services/auth_service.dart';
 
@@ -190,6 +191,19 @@ class _PlaylistsTab extends StatelessWidget {
                 subtitle: const Text('Discover public playlists'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PlaylistNetScreen())),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              child: ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: Colors.red.withOpacity(0.2),
+                  child: const Icon(Icons.swap_horiz, color: Colors.red),
+                ),
+                title: const Text('Playlist Converter'),
+                subtitle: const Text('Import from YouTube Music'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PlaylistConverterScreen())),
               ),
             ),
             const Divider(height: 1),

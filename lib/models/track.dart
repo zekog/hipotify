@@ -115,10 +115,14 @@ class Track {
   String get coverUrl {
     if (albumCoverUuid.isEmpty) return '';
     
+    // 0. Check if it's already a full URL (Http/Https)
+    if (albumCoverUuid.startsWith('http')) {
+      return albumCoverUuid;
+    }
+
     // 1. IPFS
     if (albumCoverUuid.startsWith('ipfs://')) {
-      final hash = albumCoverUuid.replaceFirst('ipfs://', '');
-      return 'https://ipfs.io/ipfs/$hash';
+      return albumCoverUuid.replaceFirst('ipfs://', 'https://ipfs.io/ipfs/');
     }
     
     // 2. Imgur (assuming 7-character alphanumeric IDs are common for Imgur)

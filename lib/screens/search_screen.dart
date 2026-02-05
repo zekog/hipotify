@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../services/api_service.dart';
+import '../services/spotify_service.dart';
 import '../services/hive_service.dart';
 import '../models/track.dart';
 import '../models/artist.dart';
@@ -120,6 +121,12 @@ class _SearchScreenState extends State<SearchScreen> {
       _lastQuery = query;
     });
 
+    // Check if the query is a link
+    if (await _handleLinkQuery(query)) {
+      setState(() => _isLoading = false);
+      return;
+    }
+
     try {
       final results = await ApiService.search(query, offset: _offset, limit: _limit);
       setState(() {
@@ -157,6 +164,242 @@ class _SearchScreenState extends State<SearchScreen> {
     } finally {
       setState(() => _isLoading = false);
     }
+  }
+
+  Future<bool> _handleLinkQuery(String query) async {
+    final cleanQuery = query.trim();
+    
+    // Spotify Regex
+    final spotifyRegex = RegExp(r'open\.spotify\.com/(album|artist|track|playlist)/([a-zA-Z0-9]+)');
+    // Tidal Regex
+    final tidalRegex = RegExp(r'tidal\.com/([a-zA-Z0-9/]*)(album|artist|track|playlist)/([a-zA-Z0-9]+)');
+
+    String? type;
+    String? id;
+    bool isSpotify = false;
+
+    final spotifyMatch = spotifyRegex.firstMatch(cleanQuery);
+    if (spotifyMatch != null) {
+      type = spotifyMatch.group(1);
+      id = spotifyMatch.group(2);
+      isSpotify = true;
+    } else {
+      final tidalMatch = tidalRegex.firstMatch(cleanQuery);
+      if (tidalMatch != null) {
+        type = tidalMatch.group(2);
+        id = tidalMatch.group(3);
+      }
+    }
+
+    if (type != null && id != null) {
+      print("SearchScreen: Detected link - Type: $type, ID: $id, Spotify: $isSpotify");
+      
+      // For Spotify links, fetch metadata and search
+      if (isSpotify) {
+        await _handleSpotifyLink(cleanQuery, type);
+        return true;
+      }
+      
+      // For Tidal links, navigate directly
+      _navigateToEntity(type, id);
+      return true;
+    }
+
+    return false;
+  }
+
+  Future<void> _handleSpotifyLink(String spotifyUrl, String type) async {
+    if (!mounted) return;
+    
+    showSnackBar(context, 'Fetching Spotify metadata...');
+    
+    try {
+      String searchQuery = '';
+      String? searchType = type;
+      String? isrc;
+      
+      // Use advanced fetching for tracks
+      if (type == 'track') {
+        final idMatch = RegExp(r'track/([a-zA-Z0-9]+)').firstMatch(spotifyUrl);
+        final id = idMatch?.group(1);
+        if (id != null) {
+           final spotifyTrack = await SpotifyService.fetchTrack(id);
+           if (spotifyTrack != null) {
+              if (spotifyTrack.isrc != null) {
+                isrc = spotifyTrack.isrc;
+                searchQuery = spotifyTrack.isrc!; 
+                print("SearchScreen: Found ISRC: $isrc");
+              } else {
+                searchQuery = '${spotifyTrack.title} ${spotifyTrack.artist ?? ''}';
+              }
+           }
+        }
+      } 
+      
+      // Fallback to oEmbed if advanced fetch failed or not a track
+      if (searchQuery.isEmpty) {
+        final metadata = await ApiService.getSpotifyMetadata(spotifyUrl);
+        if (metadata == null) {
+          if (mounted) showSnackBar(context, 'Could not fetch Spotify metadata');
+          return;
+        }
+        
+        final title = metadata['title'] ?? '';
+        final artist = metadata['artist'];
+        
+        if (type == 'track') {
+          searchQuery = artist != null ? '$title $artist' : title;
+        } else if (type == 'album') {
+          searchQuery = artist != null ? '$title $artist' : title;
+        } else if (type == 'artist') {
+          searchQuery = title;
+        } else if (type == 'playlist') {
+          searchQuery = title;
+        } else {
+          searchQuery = title;
+        }
+      }
+      
+      print("SearchScreen: Spotify search - Query: '$searchQuery', Type: $type, ISRC: $isrc");
+      
+      // Update search field
+      _searchController.text = searchQuery;
+      _lastQuery = searchQuery; // Important to set this for comparison
+      
+      // If we have an ISRC, try that first
+      if (isrc != null) {
+         try {
+           final isrcResults = await ApiService.search(isrc, limit: 1, searchType: 'track');
+           if (isrcResults.isNotEmpty && isrcResults.first is Track) {
+              final track = isrcResults.first as Track;
+              if (mounted) {
+                _searchController.text = '${track.title} ${track.artistName}'; // Show readable text
+                setState(() {
+                  _results = [track];
+                  _resultIds.clear();
+                  _resultIds.add(track.id);
+                  _hasMore = false;
+                  _isLoading = false;
+                });
+                showSnackBar(context, 'Found exact match via ISRC!');
+                return;
+              }
+           } else {
+             print("SearchScreen: ISRC search returned no results. Trying Odesli fallback...");
+             if (mounted) showSnackBar(context, 'ISRC lookup failed. Trying Odesli...');
+             
+             // Odesli Fallback
+             final odesliData = await ApiService.resolveTidalTrackFromOdesli(spotifyUrl);
+             if (odesliData != null) {
+               final tidalId = odesliData['id'] as String;
+               final title = odesliData['title'] as String;
+               final artist = odesliData['artist'] as String;
+               final cover = odesliData['cover'] as String?;
+               
+                print("SearchScreen: Odesli found Tidal ID: $tidalId ('$title' by '$artist')");
+                
+                // Fetch in background for playback with metadata override
+                final success = await _fetchAndPlayTrack(tidalId, metadataOverride: {
+                  'title': title,
+                  'artistName': artist,
+                  'cover': cover,
+                });
+
+                if (success) {
+                  // Create track object from Odesli data
+                  final track = Track(
+                    id: tidalId,
+                    title: title,
+                    artistName: artist,
+                    artistId: '', 
+                    albumId: '', 
+                    albumTitle: 'Single', 
+                    albumCoverUuid: cover ?? '', 
+                    duration: 0, 
+                  );
+
+                  if (mounted) {
+                      _searchController.text = '${track.title} ${track.artistName}';
+                      setState(() {
+                        _results = [track];
+                        _resultIds.clear();
+                        _resultIds.add(track.id);
+                        _hasMore = false;
+                        _isLoading = false;
+                      });
+                      showSnackBar(context, 'Found match via Odesli!');
+                  }
+                  return; // Exit ONLY if playback matched and started
+                } else {
+                  print("SearchScreen: Odesli match found but Playback failed (likely region locked). Falling back to text search.");
+                  if (mounted) {
+                     showSnackBar(context, 'Exact match region-locked. Searching closest match...');
+                     // Fallback to text search using the high-quality metadata we got from Odesli
+                     _searchController.text = '$title $artist';
+                     await _performSearch('$title $artist');
+                     return;
+                  }
+                }
+             }
+           }
+         } catch (e) {
+           print("ISRC search failed, falling back to text: $e");
+         }
+      }
+
+      // Perform regular search if ISRC failed or wasn't available
+      await _performSearch(searchQuery);
+      
+    } catch (e) {
+      print("Error handling Spotify link: $e");
+      if (mounted) showSnackBar(context, 'Error: $e');
+    }
+  }
+
+  void _navigateToEntity(String type, String id) {
+    if (!mounted) return;
+
+    Widget? screen;
+    if (type == 'album') {
+      screen = AlbumScreen(albumId: id);
+    } else if (type == 'artist') {
+      screen = ArtistScreen(artistId: id);
+    } else if (type == 'playlist') {
+      screen = PlaylistScreen(playlistId: id);
+    } else if (type == 'track') {
+      _fetchAndPlayTrack(id);
+      return;
+    }
+
+    if (screen != null) {
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (context) => screen!),
+      );
+    }
+  }
+
+  Future<bool> _fetchAndPlayTrack(String trackId, {Map<String, dynamic>? metadataOverride}) async {
+    try {
+      final streamMetadata = await ApiService.getStreamMetadata(trackId);
+      
+      // Merge metadata if provided
+      final finalMetadata = Map<String, dynamic>.from(streamMetadata);
+      if (metadataOverride != null) {
+        finalMetadata.addAll(metadataOverride);
+      }
+
+      final track = Track.fromJson(finalMetadata);
+      
+      if (mounted) {
+        Provider.of<PlayerProvider>(context, listen: false).playTrack(track);
+        showSnackBar(context, "Playing: ${track.title}");
+        return true;
+      }
+    } catch (e) {
+      print("Error fetching track for link: $e");
+      // Don't show snackbar here, let caller handle fallback
+    }
+    return false;
   }
 
   Future<void> _loadMore() async {
@@ -449,7 +692,7 @@ class _SearchScreenState extends State<SearchScreen> {
                         title: Text(item.title, style: TextStyle(color: textColor)),
                         subtitle: Text("Album • ${item.artistName}", style: const TextStyle(color: Colors.grey)),
                         onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute(builder: (context) => AlbumScreen(albumId: item.id)),
+                          MaterialPageRoute(builder: (context) => AlbumScreen(albumId: item.id, initialAlbum: item)),
                         ),
                       );
                     }

@@ -24,8 +24,11 @@ class PlaylistScreen extends StatefulWidget {
 
 class _PlaylistScreenState extends State<PlaylistScreen> {
   TidalPlaylist? _playlist;
+  Playlist? _localPlaylist;
   List<Track> _tracks = [];
   bool _isLoading = true;
+  bool _isEditMode = false;
+  bool _isOwned = false;
 
   @override
   void initState() {
@@ -38,22 +41,49 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
       // 1. Check if it's a local playlist in Hive
       final localPlaylist = HiveService.getPlaylist(widget.playlistId);
       if (localPlaylist != null) {
+        final isOwned = localPlaylist.ownerId == null || 
+            (AuthService.isLoggedIn && localPlaylist.ownerId == AuthService.currentUser?.id);
         setState(() {
+          _localPlaylist = localPlaylist;
           _playlist = TidalPlaylist(
             id: localPlaylist.id,
             title: localPlaylist.name,
-            imageUrl: '', // Local playlists might not have a single URL
+            imageUrl: '',
             numberOfTracks: localPlaylist.tracks.length,
             creatorName: 'You',
             description: 'Local Playlist',
           );
           _tracks = localPlaylist.tracks;
+          _isOwned = isOwned;
           _isLoading = false;
         });
         return;
       }
 
-      // 2. Otherwise fetch from API
+      // 2. Try fetching from Supabase (Playlist Net)
+      try {
+        final supabasePlaylist = await SupabasePlaylistService.fetchFullPlaylist(widget.playlistId);
+        final isOwned = AuthService.isLoggedIn && supabasePlaylist.ownerId == AuthService.currentUser?.id;
+        setState(() {
+          _localPlaylist = supabasePlaylist;
+          _playlist = TidalPlaylist(
+            id: supabasePlaylist.id,
+            title: supabasePlaylist.name,
+            imageUrl: '',
+            numberOfTracks: supabasePlaylist.tracks.length,
+            creatorName: isOwned ? 'You' : 'Playlist Net',
+            description: supabasePlaylist.isPublic ? 'Public Playlist' : 'Private Playlist',
+          );
+          _tracks = supabasePlaylist.tracks;
+          _isOwned = isOwned;
+          _isLoading = false;
+        });
+        return;
+      } catch (_) {
+        // Fall through to Tidal API
+      }
+
+      // 3. Otherwise fetch from Tidal API
       final playlist = await ApiService.getPlaylistDetails(widget.playlistId);
       final tracks = await ApiService.getPlaylistTracks(widget.playlistId);
       setState(() {
@@ -67,6 +97,68 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
         showSnackBar(context, "Error: $e");
       }
       setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _showRenameDialog() async {
+    final controller = TextEditingController(text: _playlist?.title ?? '');
+    final newName = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Rename Playlist'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(hintText: 'New name'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('CANCEL')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: const Text('RENAME'),
+          ),
+        ],
+      ),
+    );
+
+    if (newName != null && newName.isNotEmpty && _localPlaylist != null && mounted) {
+      final updated = Playlist(
+        id: _localPlaylist!.id,
+        name: newName,
+        tracks: _localPlaylist!.tracks,
+        ownerId: _localPlaylist!.ownerId,
+        isPublic: _localPlaylist!.isPublic,
+        customCoverPath: _localPlaylist!.customCoverPath,
+      );
+      await Provider.of<LibraryProvider>(context, listen: false).updatePlaylist(updated);
+      _fetchData();
+      if (mounted) showSnackBar(context, 'Playlist renamed!');
+    }
+  }
+
+  Future<void> _showDeleteDialog() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Playlist?'),
+        content: const Text('This action cannot be undone. The playlist will also be removed from the cloud.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('CANCEL')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('DELETE'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true && mounted) {
+      await Provider.of<LibraryProvider>(context, listen: false).deletePlaylist(widget.playlistId);
+      if (mounted) {
+        showSnackBar(context, 'Playlist deleted.');
+        Navigator.pop(context);
+      }
     }
   }
 
@@ -123,14 +215,55 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
           id: _playlist!.id,
           name: _playlist!.title,
           tracks: _tracks,
+          ownerId: _localPlaylist?.ownerId ?? AuthService.currentUser?.id,
+          isPublic: true,
         );
         await SupabasePlaylistService.publishPlaylist(
           playlist,
           description: descriptionController.text.trim(),
         );
-        if (mounted) showSnackBar(context, 'Published successfully!');
+        // Update local state
+        await Provider.of<LibraryProvider>(context, listen: false).updatePlaylist(playlist);
+        _fetchData();
+        if (mounted) showSnackBar(context, 'Published to Playlist Net!');
       } catch (e) {
         if (mounted) showSnackBar(context, 'Failed to publish: $e');
+      }
+    }
+  }
+
+  Future<void> _unpublishPlaylist() async {
+    if (!AuthService.isLoggedIn || !_isOwned || _localPlaylist == null) return;
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Unpublish Playlist?'),
+        content: const Text('This will make your playlist private. Others will no longer see it on Playlist Net.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('CANCEL')),
+          ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('UNPUBLISH')),
+        ],
+      ),
+    );
+
+    if (confirm == true && mounted) {
+      showSnackBar(context, 'Unpublishing...');
+      try {
+        final playlist = Playlist(
+          id: _localPlaylist!.id,
+          name: _localPlaylist!.name,
+          tracks: _localPlaylist!.tracks,
+          ownerId: _localPlaylist!.ownerId,
+          isPublic: false,
+          customCoverPath: _localPlaylist!.customCoverPath,
+        );
+        await SupabasePlaylistService.publishPlaylist(playlist);
+        await Provider.of<LibraryProvider>(context, listen: false).updatePlaylist(playlist);
+        _fetchData();
+        if (mounted) showSnackBar(context, 'Playlist is now private.');
+      } catch (e) {
+        if (mounted) showSnackBar(context, 'Failed to unpublish: $e');
       }
     }
   }
@@ -162,6 +295,25 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
           SliverAppBar(
             expandedHeight: 300,
             pinned: true,
+            actions: _isOwned ? [
+              if (_isEditMode) ...[
+                IconButton(
+                  icon: const Icon(Icons.edit),
+                  tooltip: 'Rename Playlist',
+                  onPressed: _showRenameDialog,
+                ),
+                IconButton(
+                  icon: const Icon(Icons.delete_forever),
+                  tooltip: 'Delete Playlist',
+                  onPressed: _showDeleteDialog,
+                ),
+              ],
+              IconButton(
+                icon: Icon(_isEditMode ? Icons.done : Icons.edit_note),
+                tooltip: _isEditMode ? 'Done' : 'Edit Mode',
+                onPressed: () => setState(() => _isEditMode = !_isEditMode),
+              ),
+            ] : null,
             flexibleSpace: FlexibleSpaceBar(
               title: Text(_playlist!.title, style: const TextStyle(shadows: [Shadow(blurRadius: 10, color: Colors.black)])),
               background: Stack(
@@ -253,12 +405,26 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
                         },
                       ),
                       const SizedBox(width: 16),
-                      // Publish to Network
-                      IconButton(
-                        tooltip: 'Publish to Playlist Net',
-                        icon: const Icon(Icons.public),
-                        onPressed: _publishPlaylist,
-                      ),
+                      // Publish/Unpublish toggle
+                      if (_isOwned && _localPlaylist != null)
+                        _localPlaylist!.isPublic
+                            ? IconButton(
+                                tooltip: 'Unpublish from Playlist Net',
+                                icon: const Icon(Icons.public_off),
+                                color: Colors.orange,
+                                onPressed: _unpublishPlaylist,
+                              )
+                            : IconButton(
+                                tooltip: 'Publish to Playlist Net',
+                                icon: const Icon(Icons.public),
+                                onPressed: _publishPlaylist,
+                              )
+                      else
+                        IconButton(
+                          tooltip: 'Publish to Playlist Net',
+                          icon: const Icon(Icons.public),
+                          onPressed: _publishPlaylist,
+                        ),
                     ],
                   ),
                   const SizedBox(height: 24),
@@ -270,7 +436,7 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
             delegate: SliverChildBuilderDelegate(
               (context, index) {
                 final track = _tracks[index];
-                return TrackTile(
+                final tile = TrackTile(
                   track: track,
                   showMenu: true,
                   onTap: () {
@@ -278,6 +444,26 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
                         .playPlaylist(_tracks, initialIndex: index);
                   },
                 );
+                
+                if (_isEditMode && _isOwned) {
+                  return Dismissible(
+                    key: Key('track_${track.id}'),
+                    direction: DismissDirection.endToStart,
+                    background: Container(
+                      color: Colors.red,
+                      alignment: Alignment.centerRight,
+                      padding: const EdgeInsets.only(right: 16),
+                      child: const Icon(Icons.delete, color: Colors.white),
+                    ),
+                    onDismissed: (_) async {
+                      await Provider.of<LibraryProvider>(context, listen: false)
+                          .removeTrackFromPlaylist(widget.playlistId, track.id);
+                      _fetchData();
+                    },
+                    child: tile,
+                  );
+                }
+                return tile;
               },
               childCount: _tracks.length,
             ),
