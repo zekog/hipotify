@@ -29,6 +29,9 @@ jobs:
           
       - name: Build iOS
         run: |
+          # Fix device_info_plus compile error on older Xcode
+          find ~/.pub-cache/hosted/pub.dev/device_info_plus-*/ios -name "FPPDeviceInfoPlusPlugin.m" -print0 | xargs -0 sed -i '' 's/\[info isiOSAppOnVision\]/NO/g'
+          
           flutter build ios --release --no-codesign --config-only \
             --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} \
             --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
