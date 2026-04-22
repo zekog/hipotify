@@ -11,6 +11,7 @@ import '../models/track.dart';
 import '../widgets/lyrics_viewer.dart';
 import '../utils/snackbar_helper.dart';
 import 'artist_screen.dart';
+import 'package:hipotify/screens/settings/connect_settings_screen.dart';
 
 class PlayerScreen extends StatefulWidget {
   const PlayerScreen({super.key});
@@ -203,7 +204,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Widget build(BuildContext context) {
     return Consumer2<PlayerProvider, LibraryProvider>(
       builder: (context, player, library, child) {
-        final track = player.currentTrack;
+        final track = player.effectiveTrack;
         if (track == null) return const Scaffold(body: Center(child: Text("No track playing")));
 
         final isLiked = library.isLiked(track.id);
@@ -307,6 +308,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   ),
                 ],
               ),
+              if (player.isRemoteMode)
+                IconButton(
+                  icon: const Icon(Icons.cast_connected, color: Colors.green),
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => ConnectSettingsScreen()),
+                  ),
+                  tooltip: "Remote Control Mode Active",
+                ),
             ],
           ),
           body: Stack(
@@ -336,19 +346,52 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     children: [
                       // Artwork or Lyrics
                       Expanded(
-                        child: Center(
-                          child: (_showLyrics && player.currentLyrics != null)
-                            ? LyricsViewer(
-                                lyrics: player.currentLyrics!, 
-                                positionStream: player.isCasting 
-                                  ? GoogleCastRemoteMediaClient.instance.playerPositionStream 
-                                  : player.player.positionStream,
-                                onSeek: (pos) => player.seek(pos),
-                              )
-                            : _buildArtworkView(track),
+                        child: Column(
+                          children: [
+                            if (player.isRemoteMode)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: Theme.of(context).primaryColor.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(color: Theme.of(context).primaryColor.withOpacity(0.5)),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.cast_connected, size: 16, color: Colors.green),
+                                    const SizedBox(width: 8),
+                                    const Text(
+                                      'CONTROLLING REMOTE DEVICE',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                        letterSpacing: 1.2,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            if (player.isRemoteMode) const SizedBox(height: 16),
+                            Expanded(
+                              child: Center(
+                                child: (_showLyrics && player.currentLyrics != null)
+                                  ? LyricsViewer(
+                                      lyrics: player.currentLyrics!, 
+                                      positionStream: player.isCasting 
+                                        ? GoogleCastRemoteMediaClient.instance.playerPositionStream 
+                                        : player.isRemoteMode 
+                                          ? Stream.periodic(const Duration(milliseconds: 500), (_) => player.effectivePosition)
+                                          : player.player.positionStream,
+                                      onSeek: (pos) => player.seek(pos),
+                                    )
+                                  : _buildArtworkView(track),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      
                       const SizedBox(height: 24),
 
                       // Title & Artist
@@ -439,15 +482,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       const SizedBox(height: 16),
 
                       // Seek Bar
-                      StreamBuilder<Duration>(
-                        stream: player.isCasting 
-                          ? GoogleCastRemoteMediaClient.instance.playerPositionStream 
-                          : player.player.positionStream,
-                        builder: (context, snapshot) {
-                          final position = snapshot.data ?? Duration.zero;
-                          final duration = player.isCasting
-                            ? (GoogleCastRemoteMediaClient.instance.mediaStatus?.mediaInformation?.duration ?? Duration.zero)
-                            : (player.player.duration ?? Duration.zero);
+                      Builder(
+                        builder: (context) {
+                          final position = player.effectivePosition;
+                          final duration = player.effectiveDuration;
                           
                           return Column(
                             children: [
@@ -455,13 +493,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                 data: SliderTheme.of(context).copyWith(
                                   thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
                                   trackHeight: 4,
-                                  activeTrackColor: Colors.white,
+                                  activeTrackColor: player.isRemoteMode ? Theme.of(context).primaryColor : Colors.white,
                                   inactiveTrackColor: Colors.white.withOpacity(0.2),
-                                  thumbColor: Colors.white,
-                                  overlayColor: Colors.white.withOpacity(0.1),
+                                  thumbColor: player.isRemoteMode ? Theme.of(context).primaryColor : Colors.white,
+                                  overlayColor: (player.isRemoteMode ? Theme.of(context).primaryColor : Colors.white).withOpacity(0.1),
                                 ),
                                 child: Slider(
-                                  value: position.inSeconds.toDouble().clamp(0.0, duration.inSeconds.toDouble()).toDouble(),
+                                  value: position.inSeconds.toDouble().clamp(0.0, duration.inSeconds.toDouble() > 0 ? duration.inSeconds.toDouble() : 1.0).toDouble(),
                                   max: duration.inSeconds.toDouble() > 0 ? duration.inSeconds.toDouble() : 1.0,
                                   onChanged: (value) {
                                     player.seek(Duration(seconds: value.toInt()));
@@ -501,12 +539,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           ),
                           IconButton(
                             icon: const Icon(Icons.skip_previous, size: 42, color: Colors.white),
-                            onPressed: () => player.previous(),
+                            onPressed: () => player.effectivePrevious(),
                           ),
                           _buildPlayPauseButton(player),
                           IconButton(
                             icon: const Icon(Icons.skip_next, size: 42, color: Colors.white),
-                            onPressed: () => player.next(),
+                            onPressed: () => player.effectiveNext(),
                           ),
                           IconButton(
                             tooltip: player.loopMode == 0 
@@ -584,25 +622,20 @@ class _PlayerScreenState extends State<PlayerScreen> {
   // _buildLyricsView is now replaced by LyricsViewer widget
 
   Widget _buildPlayPauseButton(PlayerProvider player) {
-    return StreamBuilder<bool>(
-      stream: player.player.playingStream,
-      builder: (context, snapshot) {
-        bool playing = snapshot.data ?? false;
-        if (player.isCasting) {
-          final castState = GoogleCastRemoteMediaClient.instance.mediaStatus?.playerState;
-          playing = castState == CastMediaPlayerState.playing;
-        }
+    return Builder(
+      builder: (context) {
+        bool playing = player.effectiveIsPlaying;
         return Container(
           width: 72,
           height: 72,
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: Colors.white,
+            color: player.isRemoteMode ? Theme.of(context).primaryColor : Colors.white,
           ),
           child: IconButton(
             icon: Icon(
               playing ? Icons.pause : Icons.play_arrow,
-              color: Colors.black,
+              color: player.isRemoteMode ? Colors.white : Colors.black,
               size: 40,
             ),
             onPressed: () => player.togglePlayPause(),

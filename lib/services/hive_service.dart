@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -69,6 +70,27 @@ class HiveService {
     await settingsBox.put('themeMode', mode);
     themeModeNotifier.value = mode;
   }
+
+  // Hipotify Connect
+  static String get deviceId {
+    String? id = settingsBox.get('deviceId');
+    return id ?? '';
+  }
+
+  static Future<void> setDeviceId(String id) => settingsBox.put('deviceId', id);
+
+  static String get deviceName => settingsBox.get('deviceName', defaultValue: Platform.localHostname);
+  static Future<void> setDeviceName(String name) => settingsBox.put('deviceName', name);
+
+  static List<Map<String, dynamic>> get pairedDevices {
+    final List<dynamic>? data = settingsBox.get('pairedDevices');
+    if (data == null) return [];
+    return data.map((e) => Map<String, dynamic>.from(e)).toList();
+  }
+
+  static Future<void> savePairedDevices(List<Map<String, dynamic>> devices) => 
+      settingsBox.put('pairedDevices', devices);
+
 
   // Likes
   static Box get likesBox {

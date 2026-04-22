@@ -17,7 +17,7 @@ class MiniPlayer extends StatelessWidget {
       builder: (context, isPlayerVisible, _) {
         return Consumer<PlayerProvider>(
           builder: (context, player, child) {
-            final track = player.currentTrack;
+            final track = player.effectiveTrack;
             // Hide if no track, or if player screen is visible, or if explicitly hidden (e.g. download tab)
             if (track == null || isPlayerVisible || player.isMiniPlayerHidden) return const SizedBox.shrink();
 
@@ -53,7 +53,12 @@ class MiniPlayer extends StatelessWidget {
                           decoration: BoxDecoration(
                             color: const Color(0xFF282828).withOpacity(0.9),
                             borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: Colors.white.withOpacity(0.1)),
+                            border: Border.all(
+                              color: player.isRemoteMode 
+                                  ? Theme.of(context).primaryColor.withOpacity(0.5) 
+                                  : Colors.white.withOpacity(0.1),
+                              width: player.isRemoteMode ? 2 : 1,
+                            ),
                           ),
                           child: Row(
                             children: [
@@ -80,15 +85,26 @@ class MiniPlayer extends StatelessWidget {
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(
-                                      track.title,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 14,
-                                      ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
+                                    Row(
+                                      children: [
+                                        if (player.isRemoteMode)
+                                          Padding(
+                                            padding: const EdgeInsets.only(right: 4),
+                                            child: Icon(Icons.cast_connected, size: 12, color: Theme.of(context).primaryColor),
+                                          ),
+                                        Expanded(
+                                          child: Text(
+                                            track.title,
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 14,
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                     Text(
                                       track.artistName,
@@ -103,14 +119,14 @@ class MiniPlayer extends StatelessWidget {
                                 ),
                               ),
                               IconButton(
-                                icon: Icon(player.player.playing ? Icons.pause : Icons.play_arrow),
-                                color: Colors.white,
+                                icon: Icon(player.effectiveIsPlaying ? Icons.pause : Icons.play_arrow),
+                                color: player.isRemoteMode ? Theme.of(context).primaryColor : Colors.white,
                                 iconSize: 32,
                                 onPressed: () => player.togglePlayPause(),
                               ),
                               IconButton(
                                 icon: const Icon(Icons.skip_next, color: Colors.white),
-                                onPressed: () => player.next(),
+                                onPressed: () => player.effectiveNext(),
                               ),
                               const SizedBox(width: 8),
                             ],
@@ -123,6 +139,7 @@ class MiniPlayer extends StatelessWidget {
               ),
             );
           },
+
         );
       },
     );

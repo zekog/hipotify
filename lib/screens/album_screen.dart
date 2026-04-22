@@ -74,6 +74,7 @@ class _AlbumScreenState extends State<AlbumScreen> {
         throw Exception("Could not fetch album details or tracks");
       }
 
+      if (!mounted) return;
       setState(() {
         _album = album;
         _tracks = tracks;

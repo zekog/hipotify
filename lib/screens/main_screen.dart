@@ -11,6 +11,7 @@ import 'library_screen.dart';
 import 'settings_screen.dart';
 import 'download_screen.dart';
 import '../widgets/responsive_layout.dart';
+import 'wear_os/wear_os_home_screen.dart';
 
 class MainScreen extends StatefulWidget {
   final int? initialIndex;
@@ -22,7 +23,8 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> {
   late int _currentIndex;
-  final GlobalKey<State<SearchScreen>> _searchScreenKey = GlobalKey<State<SearchScreen>>();
+  final GlobalKey<State<SearchScreen>> _searchScreenKey =
+      GlobalKey<State<SearchScreen>>();
 
   @override
   void initState() {
@@ -33,7 +35,10 @@ class _MainScreenState extends State<MainScreen> {
     // Check if API URL is set on startup
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (HiveService.apiUrl == null || HiveService.apiUrl!.isEmpty) {
-        _showSetupDialog();
+        // Nie wyświecaj AlertDialogu na Wear OS bo to zepsuje layout
+        if (!ResponsiveLayout.isWearOs(context)) {
+          _showSetupDialog();
+        }
       }
     });
   }
@@ -44,7 +49,8 @@ class _MainScreenState extends State<MainScreen> {
       barrierDismissible: false,
       builder: (context) => AlertDialog(
         title: const Text("Setup Required"),
-        content: const Text("Please configure your API Base URL in Settings to start streaming."),
+        content: const Text(
+            "Please configure your API Base URL in Settings to start streaming."),
         actions: [
           TextButton(
             onPressed: () {
@@ -59,20 +65,21 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   List<Widget> get _screens => [
-    const HomeScreen(),
-    SearchScreen(key: _searchScreenKey),
-    const LibraryScreen(),
-    const DownloadScreen(),
-    const SettingsScreen(),
-  ];
+        const HomeScreen(),
+        SearchScreen(key: _searchScreenKey),
+        const LibraryScreen(),
+        const DownloadScreen(),
+        const SettingsScreen(),
+      ];
 
   void _onItemTapped(int index) {
     setState(() => _currentIndex = index);
     // Sync with global bottom nav bar state
     BottomNavBarState.currentIndex.value = index;
     // Hide MiniPlayer on Download tab (index 3)
-    Provider.of<PlayerProvider>(context, listen: false).setMiniPlayerHidden(index == 3);
-    
+    Provider.of<PlayerProvider>(context, listen: false)
+        .setMiniPlayerHidden(index == 3);
+
     // Reset SearchScreen to history when navigating to it (index 1)
     if (index == 1) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -87,9 +94,15 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Check for Wear OS first
+    if (ResponsiveLayout.isWearOs(context)) {
+      return const WearOsHomeScreen();
+    }
+
     return ResponsiveLayout(
       mobileScaffold: _buildMobileScaffold(),
       tvScaffold: _buildTvScaffold(),
+      wearOsScaffold: const WearOsHomeScreen(),
     );
   }
 
@@ -111,18 +124,28 @@ class _MainScreenState extends State<MainScreen> {
             selectedIndex: _currentIndex,
             onDestinationSelected: _onItemTapped,
             backgroundColor: const Color(0xFF121212),
-            selectedIconTheme: IconThemeData(color: Theme.of(context).primaryColor, size: 32),
-            unselectedIconTheme: IconThemeData(color: Colors.white.withOpacity(0.5), size: 28),
+            selectedIconTheme:
+                IconThemeData(color: Theme.of(context).primaryColor, size: 32),
+            unselectedIconTheme:
+                IconThemeData(color: Colors.white.withOpacity(0.5), size: 28),
             labelType: NavigationRailLabelType.all,
-            selectedLabelTextStyle: TextStyle(color: Theme.of(context).primaryColor, fontWeight: FontWeight.bold),
-            unselectedLabelTextStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
+            selectedLabelTextStyle: TextStyle(
+                color: Theme.of(context).primaryColor,
+                fontWeight: FontWeight.bold),
+            unselectedLabelTextStyle:
+                TextStyle(color: Colors.white.withOpacity(0.5)),
             groupAlignment: 0.0, // Center items vertically
             destinations: const [
-              NavigationRailDestination(icon: Icon(Icons.home_filled), label: Text('Home')),
-              NavigationRailDestination(icon: Icon(Icons.search), label: Text('Search')),
-              NavigationRailDestination(icon: Icon(Icons.library_music), label: Text('Library')),
-              NavigationRailDestination(icon: Icon(Icons.download), label: Text('Download')),
-              NavigationRailDestination(icon: Icon(Icons.settings), label: Text('Settings')),
+              NavigationRailDestination(
+                  icon: Icon(Icons.home_filled), label: Text('Home')),
+              NavigationRailDestination(
+                  icon: Icon(Icons.search), label: Text('Search')),
+              NavigationRailDestination(
+                  icon: Icon(Icons.library_music), label: Text('Library')),
+              NavigationRailDestination(
+                  icon: Icon(Icons.download), label: Text('Download')),
+              NavigationRailDestination(
+                  icon: Icon(Icons.settings), label: Text('Settings')),
             ],
           ),
           const VerticalDivider(thickness: 1, width: 1, color: Colors.white10),

@@ -17,6 +17,7 @@ import '../services/hive_service.dart';
 import '../services/discord_rpc_service.dart';
 import '../services/room_service.dart';
 import '../services/auth_service.dart';
+import '../services/remote_control_service.dart';
 
 class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
   final AudioPlayer _player = AudioPlayer(
@@ -37,7 +38,9 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
   String? get errorMessage => _errorMessage;
   Map<String, dynamic>? get currentMetadata => _currentMetadata;
   Lyrics? get currentLyrics => _currentLyrics;
-  Track? get currentTrack => _queue.isNotEmpty && _currentIndex < _queue.length ? _queue[_currentIndex] : null;
+  Track? get currentTrack => _queue.isNotEmpty && _currentIndex < _queue.length
+      ? _queue[_currentIndex]
+      : null;
 
   // Listen Together State
   String? _roomId;
@@ -46,7 +49,13 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
   String? get roomId => _roomId;
   bool get isHost => _isHost;
   bool get isInRoom => _roomId != null;
-  
+
+  // Remote Control State
+  final RemoteControlService _remoteService = RemoteControlService();
+  bool get isRemoteMode => _remoteService.mode == ControlMode.remote;
+  Map<String, dynamic>? _remoteState;
+  Map<String, dynamic>? get remoteState => _remoteState;
+
   // MiniPlayer visibility logic
   bool _isMiniPlayerHidden = false;
   bool get isMiniPlayerHidden => _isMiniPlayerHidden;
@@ -54,6 +63,30 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
   void setMiniPlayerHidden(bool hidden) {
     _isMiniPlayerHidden = hidden;
     notifyListeners();
+  }
+
+  // Effective State (Local or Remote)
+  Track? get effectiveTrack {
+    if (isRemoteMode) {
+      if (_remoteState == null || _remoteState!['track'] == null) return null;
+      return Track.fromJson(Map<String, dynamic>.from(_remoteState!['track']));
+    }
+    return currentTrack;
+  }
+
+  bool get effectiveIsPlaying {
+    if (isRemoteMode) return _remoteState?['isPlaying'] ?? false;
+    return _player.playing;
+  }
+
+  Duration get effectivePosition {
+    if (isRemoteMode) return Duration(milliseconds: _remoteState?['position'] ?? 0);
+    return _player.position;
+  }
+
+  Duration get effectiveDuration {
+    if (isRemoteMode) return Duration(milliseconds: _remoteState?['duration'] ?? 0);
+    return _player.duration ?? Duration.zero;
   }
 
   // Loop mode: 0 = off, 1 = track, 2 = playlist
@@ -74,8 +107,6 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
     }
     notifyListeners();
   }
-
-
 
   ConcatenatingAudioSource? _playlist;
   int _windowStartIndex = 0;
@@ -98,10 +129,11 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
   void _init() {
     DiscordRpcService.init();
     _initCast();
-    
+
     // Listen to volume changes to save state
     _player.volumeStream.listen((volume) {
       _savedVolume = volume;
+      _broadcastRemoteState();
     });
 
     _player.playerStateStream.listen((state) {
@@ -109,9 +141,34 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
         // If we reached the end of the buffer, try to load more?
         // Usually sequenceState handles the transition.
       }
+      _broadcastRemoteState();
       notifyListeners();
     });
-    
+
+    _player.positionStream.listen((pos) {
+      // Broadcast state update every second when playing to keep remote UI synced
+      if (_player.playing && pos.inMilliseconds % 1000 < 200) {
+        _broadcastRemoteState();
+      }
+      notifyListeners();
+    });
+
+    // Remote Control Listeners
+    _remoteService.init(this);
+    _remoteService.remoteStateStream.listen((state) {
+      if (isRemoteMode) {
+        _remoteState = state;
+        notifyListeners();
+      }
+    });
+
+    _remoteService.connectionStream.listen((isConnected) {
+      if (isConnected) {
+        _player.stop();
+      }
+      notifyListeners();
+    });
+
     // Listen to current item index in the ConcatenatingAudioSource
     _player.currentIndexStream.listen((index) {
       if (index != null && !_isModifyingPlaylist) {
@@ -137,29 +194,38 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
     }
 
     // Periodic broadcast if host (heartbeat/sync)
-    Timer.periodic(const Duration(seconds: 5), (timer) {
+    Timer.periodic(const Duration(seconds: 1), (timer) {
       if (_roomId != null && _isHost && _player.playing) {
         _broadcastUpdate();
+      }
+      if (!isRemoteMode && _player.playing) {
+        _broadcastRemoteState();
       }
     });
   }
 
   void _updateCurrentIndex(int index) {
-      // Update the global queue index based on the window start
-      final newQueueIndex = _windowStartIndex + index;
-      if (newQueueIndex != _currentIndex && newQueueIndex >= 0 && newQueueIndex < _queue.length) {
-        _currentIndex = newQueueIndex.toInt();
-        _fetchLyrics(_queue[_currentIndex].id);
-        HiveService.addToHistory(_queue[_currentIndex]);
-        notifyListeners();
-        // Preload neighbors when index changes
-        _updatePlaybackWindow();
-      }
+    // Update the global queue index based on the window start
+    final newQueueIndex = _windowStartIndex + index;
+    if (newQueueIndex != _currentIndex &&
+        newQueueIndex >= 0 &&
+        newQueueIndex < _queue.length) {
+      _currentIndex = newQueueIndex.toInt();
+      _fetchLyrics(_queue[_currentIndex].id);
+      HiveService.addToHistory(_queue[_currentIndex]);
+      notifyListeners();
+      // Preload neighbors when index changes
+      _updatePlaybackWindow();
+    }
   }
-  
+
   // ... (lines 148-319 unchanged)
-  
+
   Future<void> playTrack(Track track) async {
+    if (isRemoteMode) {
+      remotePlayTrack(track);
+      return;
+    }
     _queue = [track];
     _currentIndex = 0;
     await _loadAndPlayQueue();
@@ -167,6 +233,10 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
   }
 
   Future<void> playPlaylist(List<Track> tracks, {int initialIndex = 0}) async {
+    if (isRemoteMode) {
+      remotePlayPlaylist(tracks, initialIndex: initialIndex);
+      return;
+    }
     _queue = List.from(tracks);
     _currentIndex = initialIndex;
     await _loadAndPlayQueue();
@@ -198,20 +268,21 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
       // Only insert if it falls within valid bounds of the current playlist window
       // It's possible the window doesn't even cover the immediate next if we are at the end?
       // But usually we are.
-      if (playlistInsertIndex >= 0 && playlistInsertIndex <= _playlist!.length) {
-         try {
-           final uri = await _getUri(track);
-           AudioSource source;
-           final urlString = uri.toString();
-           if (urlString.startsWith('data:application/dash+xml')) {
-              source = DashAudioSource(uri, tag: track.toMediaItem());
-           } else {
-              source = AudioSource.uri(uri, tag: track.toMediaItem());
-           }
-           await _playlist!.insert(playlistInsertIndex, source);
-         } catch (e) {
-           print("Error adding to next: $e");
-         }
+      if (playlistInsertIndex >= 0 &&
+          playlistInsertIndex <= _playlist!.length) {
+        try {
+          final uri = await _getUri(track);
+          AudioSource source;
+          final urlString = uri.toString();
+          if (urlString.startsWith('data:application/dash+xml')) {
+            source = DashAudioSource(uri, tag: track.toMediaItem());
+          } else {
+            source = AudioSource.uri(uri, tag: track.toMediaItem());
+          }
+          await _playlist!.insert(playlistInsertIndex, source);
+        } catch (e) {
+          print("Error adding to next: $e");
+        }
       }
     }
   }
@@ -228,14 +299,14 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
       await _player.setVolume(_savedVolume);
       // Initialize window at current index
       _windowStartIndex = _currentIndex;
-      
+
       // Load ONLY the current track initially for speed
       final track = _queue[_currentIndex];
       final uri = await _getUri(track);
-      
+
       AudioSource audioSource;
       final urlString = uri.toString();
-      
+
       // Check if this is a DASH manifest (data URI)
       if (urlString.startsWith('data:application/dash+xml')) {
         print("PlayerProvider: Using DASH audio source");
@@ -252,23 +323,22 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
 
       // No silence padding
       _playlist = ConcatenatingAudioSource(children: [audioSource]);
-      
+
       print("PlayerProvider: Setting audio source: $urlString");
       await _player.setAudioSource(_playlist!);
-      
+
       print("PlayerProvider: Playing...");
       await _player.play();
       print("PlayerProvider: Playback started");
-      
+
       // Removed _fadeIn() as per "Silence Padding" implementation
-      
+
       HiveService.addToHistory(_queue[_currentIndex]);
-      
+
       DiscordRpcService.updatePresence(_queue[_currentIndex]);
 
       // After playback starts, load neighbors
       _updatePlaybackWindow();
-
     } catch (e) {
       print("Error playing track: $e");
       _errorMessage = e.toString();
@@ -284,15 +354,16 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
     // We want to ensure we have [Prev, Current, Next] loaded if possible.
     // Actually, for "Skip" to work, we definitely need Next.
     // For "Prev" to work, we need Prev.
-    
+
     // 1. Load Next if missing
     // The index of 'Current' in playlist is (_currentIndex - _windowStartIndex)
     final playerIndex = _currentIndex - _windowStartIndex;
-    
+
     // Check if we have a Next in Queue but not in Playlist
     // Playlist length is _playlist!.length
     // If playerIndex is the last item, we need to add one if queue has more.
-    if (playerIndex == _playlist!.length - 1 && _currentIndex < _queue.length - 1) {
+    if (playerIndex == _playlist!.length - 1 &&
+        _currentIndex < _queue.length - 1) {
       _fetchAndAddNext(_currentIndex + 1);
     }
 
@@ -309,7 +380,7 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
       print("Preloading Next: ${track.title}");
       final uri = await _getUri(track);
       final urlString = uri.toString();
-      
+
       AudioSource source;
       if (urlString.startsWith('data:application/dash+xml')) {
         source = DashAudioSource(uri, tag: track.toMediaItem());
@@ -329,7 +400,7 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
       print("Preloading Prev: ${track.title}");
       final uri = await _getUri(track);
       final urlString = uri.toString();
-      
+
       AudioSource source;
       if (urlString.startsWith('data:application/dash+xml')) {
         source = DashAudioSource(uri, tag: track.toMediaItem());
@@ -348,29 +419,31 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
   }
 
   Future<Uri> _getUri(Track track) async {
-     // 1. Check Offline
-     final downloadedTrack = HiveService.getDownloadedTrack(track.id);
-     if (downloadedTrack != null && downloadedTrack.localPath != null && await File(downloadedTrack.localPath!).exists()) {
-       return Uri.file(downloadedTrack.localPath!);
-     }
-     
-     // 2. Fetch Metadata
-     // If it's the current track, we might want to update _currentMetadata
-     // But for preloading, we shouldn't overwrite it if it's not playing?
-     // Actually, _currentMetadata is just for UI.
-     final metadata = await ApiService.getStreamMetadata(track.id);
-     
-     if (track.id == _queue[_currentIndex].id) {
-       _currentMetadata = metadata;
-       _fetchLyrics(track.id);
-     }
-     
-     final url = metadata['url']?.toString();
-     if (url == null || url.isEmpty) {
-       throw Exception("No stream URL found for track: ${track.title}");
-     }
-     
-     return Uri.parse(url);
+    // 1. Check Offline
+    final downloadedTrack = HiveService.getDownloadedTrack(track.id);
+    if (downloadedTrack != null &&
+        downloadedTrack.localPath != null &&
+        await File(downloadedTrack.localPath!).exists()) {
+      return Uri.file(downloadedTrack.localPath!);
+    }
+
+    // 2. Fetch Metadata
+    // If it's the current track, we might want to update _currentMetadata
+    // But for preloading, we shouldn't overwrite it if it's not playing?
+    // Actually, _currentMetadata is just for UI.
+    final metadata = await ApiService.getStreamMetadata(track.id);
+
+    if (track.id == _queue[_currentIndex].id) {
+      _currentMetadata = metadata;
+      _fetchLyrics(track.id);
+    }
+
+    final url = metadata['url']?.toString();
+    if (url == null || url.isEmpty) {
+      throw Exception("No stream URL found for track: ${track.title}");
+    }
+
+    return Uri.parse(url);
   }
 
   Future<void> next() async {
@@ -387,7 +460,7 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
       }
       return;
     }
-    
+
     // Check if we can go to next track in queue
     if (_currentIndex < _queue.length - 1) {
       _currentIndex++;
@@ -400,6 +473,22 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
       // Fallback to player's next (in case of windowing issues)
       await _player.seekToNext();
     }
+  }
+
+  Future<void> effectiveNext() async {
+    if (isRemoteMode) {
+      remoteNext();
+      return;
+    }
+    await next();
+  }
+
+  Future<void> effectivePrevious() async {
+    if (isRemoteMode) {
+      remotePrevious();
+      return;
+    }
+    await previous();
   }
 
   Future<void> previous() async {
@@ -416,7 +505,7 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
       }
       return;
     }
-    
+
     // Check if we can go to previous track in queue
     if (_currentIndex > 0) {
       _currentIndex--;
@@ -432,8 +521,17 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
   }
 
   Future<void> togglePlayPause() async {
+    if (isRemoteMode) {
+      if (effectiveIsPlaying) {
+        remotePause();
+      } else {
+        remotePlay();
+      }
+      return;
+    }
     if (_isCasting) {
-      final state = GoogleCastRemoteMediaClient.instance.mediaStatus?.playerState;
+      final state =
+          GoogleCastRemoteMediaClient.instance.mediaStatus?.playerState;
       if (state == CastMediaPlayerState.playing) {
         await GoogleCastRemoteMediaClient.instance.pause();
       } else {
@@ -442,20 +540,59 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
       return;
     }
     if (_player.playing) {
-      await _player.pause();
-      if (_queue.isNotEmpty) {
-        DiscordRpcService.updatePresence(_queue[_currentIndex], isPaused: true);
-      }
+      await pause();
     } else {
-      await _player.play();
-      if (_queue.isNotEmpty) {
-        DiscordRpcService.updatePresence(_queue[_currentIndex]);
-      }
+      await play();
     }
     _broadcastUpdate();
   }
 
+  Future<void> play() async {
+    if (isRemoteMode) {
+      remotePlay();
+      return;
+    }
+    if (_isCasting) {
+      await GoogleCastRemoteMediaClient.instance.play();
+      return;
+    }
+    await _player.play();
+    if (_queue.isNotEmpty) {
+      DiscordRpcService.updatePresence(_queue[_currentIndex]);
+    }
+    _broadcastUpdate();
+  }
+
+  Future<void> pause() async {
+    if (isRemoteMode) {
+      remotePause();
+      return;
+    }
+    if (_isCasting) {
+      await GoogleCastRemoteMediaClient.instance.pause();
+      return;
+    }
+    await _player.pause();
+    if (_queue.isNotEmpty) {
+      DiscordRpcService.updatePresence(_queue[_currentIndex], isPaused: true);
+    }
+    _broadcastUpdate();
+  }
+
+  Future<void> setVolume(double volume) async {
+    if (isRemoteMode) {
+      remoteSetVolume(volume);
+      return;
+    }
+    await _player.setVolume(volume.clamp(0.0, 1.0));
+    notifyListeners();
+  }
+
   Future<void> seek(Duration position) async {
+    if (isRemoteMode) {
+      remoteSeek(position);
+      return;
+    }
     if (_isCasting) {
       await GoogleCastRemoteMediaClient.instance.seek(GoogleCastMediaSeekOption(
         position: position,
@@ -469,7 +606,7 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
 
   void _initCast() async {
     if (!Platform.isAndroid && !Platform.isIOS) return;
-    
+
     print("PlayerProvider: Initializing Cast...");
     const appId = GoogleCastDiscoveryCriteria.kDefaultApplicationId;
     GoogleCastOptions? options;
@@ -486,23 +623,29 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
       try {
         await GoogleCastContext.instance.setSharedInstanceWithOptions(options);
         print("PlayerProvider: Cast context initialized with appId: $appId");
-        
+
         // Listen to cast status
         _castStatusSubscription?.cancel();
-        _castStatusSubscription = GoogleCastRemoteMediaClient.instance.mediaStatusStream.listen((status) {
+        _castStatusSubscription = GoogleCastRemoteMediaClient
+            .instance.mediaStatusStream
+            .listen((status) {
           print("PlayerProvider: Cast status updated: ${status?.playerState}");
           notifyListeners();
         });
 
         // Listen to session changes to detect disconnects
         _sessionSubscription?.cancel();
-        _sessionSubscription = GoogleCastSessionManager.instance.currentSessionStream.listen((session) {
+        _sessionSubscription = GoogleCastSessionManager
+            .instance.currentSessionStream
+            .listen((session) {
           final state = session?.connectionState;
-          print("PlayerProvider: Cast session updated: ${session?.device?.deviceID}, state: $state");
-          
+          print(
+              "PlayerProvider: Cast session updated: ${session?.device?.deviceID}, state: $state");
+
           if (session == null || state == GoogleCastConnectState.disconnected) {
             if (_isCasting) {
-              print("PlayerProvider: Session ended or disconnected, resetting state");
+              print(
+                  "PlayerProvider: Session ended or disconnected, resetting state");
               _isCasting = false;
               _connectedDevice = null;
               _castStatusSubscription?.cancel();
@@ -510,12 +653,13 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
               notifyListeners();
             }
           } else if (state == GoogleCastConnectState.connected) {
-            if (!_isCasting || _connectedDevice?.deviceID != session.device?.deviceID) {
+            if (!_isCasting ||
+                _connectedDevice?.deviceID != session.device?.deviceID) {
               print("PlayerProvider: Session connected, updating state");
               _isCasting = true;
               _connectedDevice = session.device;
               notifyListeners();
-              
+
               // If we just connected and have a queue, trigger casting
               if (_queue.isNotEmpty) {
                 castCurrentTrack();
@@ -527,7 +671,8 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
           }
         });
       } catch (e) {
-        print("PlayerProvider: Cast initialization failed (likely missing Google Play Services): $e");
+        print(
+            "PlayerProvider: Cast initialization failed (likely missing Google Play Services): $e");
       }
     }
   }
@@ -543,12 +688,14 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
   void _fetchLyrics(String trackId) {
     _currentLyrics = null;
     notifyListeners();
-    
+
     ApiService.getLyrics(trackId).then((lyrics) {
-      if (_queue.isNotEmpty && _currentIndex < _queue.length && _queue[_currentIndex].id == trackId) {
+      if (_queue.isNotEmpty &&
+          _currentIndex < _queue.length &&
+          _queue[_currentIndex].id == trackId) {
         _currentLyrics = lyrics;
         notifyListeners();
-        
+
         // If we are casting, we need to update the receiver with the new lyrics
         if (_isCasting) {
           castCurrentTrack();
@@ -563,7 +710,7 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
   bool _isCasting = false;
   StreamSubscription<GoggleCastMediaStatus?>? _castStatusSubscription;
   StreamSubscription<GoogleCastSession?>? _sessionSubscription;
-  
+
   List<GoogleCastDevice> get castDevices => _castDevices;
   GoogleCastDevice? get connectedDevice => _connectedDevice;
   bool get isCasting => _isCasting;
@@ -584,7 +731,8 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
 
   Future<void> connectAndCast(GoogleCastDevice device) async {
     try {
-      print("PlayerProvider: connectAndCast - Starting session with ${device.friendlyName}");
+      print(
+          "PlayerProvider: connectAndCast - Starting session with ${device.friendlyName}");
       // We don't set _isCasting here anymore; the listener will handle it
       // when the connection state transitions to 'connected'.
       await GoogleCastSessionManager.instance.startSessionWithDevice(device);
@@ -600,7 +748,8 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
     // Try HIGH quality first for casting as it's more likely to be a direct URL (AAC/MP3)
     // than HI_RES_LOSSLESS (DASH data URI)
     try {
-      final metadata = await ApiService.getStreamMetadata(track.id, quality: 'HIGH');
+      final metadata =
+          await ApiService.getStreamMetadata(track.id, quality: 'HIGH');
       final url = metadata['url'] as String;
       if (!url.startsWith('data:')) {
         print("PlayerProvider: Found direct URL for casting (HIGH): $url");
@@ -609,40 +758,43 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
     } catch (e) {
       print("PlayerProvider: Failed to get HIGH quality URL for casting: $e");
     }
-    
+
     // Fallback to default quality
     return await _getUri(track);
   }
 
   Future<void> castCurrentTrack() async {
     if (_connectedDevice == null || _queue.isEmpty) return;
-    
+
     final track = _queue[_currentIndex];
     print("PlayerProvider: castCurrentTrack - track: ${track.title}");
     try {
       Uri uri = await _getCastableUri(track);
       print("PlayerProvider: castCurrentTrack - URI: $uri");
-      
+
       // TEST: If you want to test with a public URL, uncomment the line below
       // uri = Uri.parse("https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3");
-      
+
       if (uri.scheme == 'file') {
         print("Cannot cast local file: $uri");
         return;
       }
-      
+
       String contentType = 'audio/mpeg'; // Default
       final uriString = uri.toString().toLowerCase();
       if (uriString.contains('dash+xml') || uri.path.endsWith('.mpd')) {
         contentType = 'application/dash+xml';
-      } else if (uri.path.endsWith('.mp4') || uri.path.endsWith('.m4a') || uriString.contains('audio/mp4')) {
+      } else if (uri.path.endsWith('.mp4') ||
+          uri.path.endsWith('.m4a') ||
+          uriString.contains('audio/mp4')) {
         contentType = 'audio/mp4';
-      } else if (uri.path.endsWith('.flac') || uriString.contains('audio/flac')) {
+      } else if (uri.path.endsWith('.flac') ||
+          uriString.contains('audio/flac')) {
         contentType = 'audio/flac';
       } else if (uri.path.endsWith('.wav') || uriString.contains('audio/wav')) {
         contentType = 'audio/wav';
       }
-      
+
       print("PlayerProvider: castCurrentTrack - contentType: $contentType");
 
       final mediaInfo = GoogleCastMediaInformation(
@@ -650,52 +802,55 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
         contentUrl: uri,
         streamType: CastMediaStreamType.buffered,
         contentType: contentType,
-        duration: _player.duration ?? (track.duration > 0 ? Duration(seconds: track.duration) : null),
+        duration: _player.duration ??
+            (track.duration > 0 ? Duration(seconds: track.duration) : null),
         metadata: GoogleCastMusicMediaMetadata(
           title: track.title,
           artist: track.artistName,
           albumName: track.albumTitle,
-          images: [
-            GoogleCastImage(url: Uri.parse(track.coverUrl))
-          ],
+          images: [GoogleCastImage(url: Uri.parse(track.coverUrl))],
           releaseDate: DateTime(2024, 1, 1), // Safe dummy date to avoid NPE
         ),
-        tracks: _currentLyrics?.toWebVTT() != null ? [
-          GoogleCastMediaTrack(
-            trackId: 1,
-            type: TrackType.text,
-            trackContentId: 'data:text/vtt;base64,${base64Encode(utf8.encode(_currentLyrics!.toWebVTT()!))}',
-            trackContentType: 'text/vtt',
-            name: 'Lyrics',
-            language: Rfc5646Language.english,
-            subtype: TextTrackType.subtitles,
-          )
-        ] : null,
+        tracks: _currentLyrics?.toWebVTT() != null
+            ? [
+                GoogleCastMediaTrack(
+                  trackId: 1,
+                  type: TrackType.text,
+                  trackContentId:
+                      'data:text/vtt;base64,${base64Encode(utf8.encode(_currentLyrics!.toWebVTT()!))}',
+                  trackContentType: 'text/vtt',
+                  name: 'Lyrics',
+                  language: Rfc5646Language.english,
+                  subtype: TextTrackType.subtitles,
+                )
+              ]
+            : null,
       );
 
-      print("PlayerProvider: castCurrentTrack - Loading media (autoPlay: true)...");
-      await GoogleCastRemoteMediaClient.instance.loadMedia(mediaInfo, autoPlay: true);
+      print(
+          "PlayerProvider: castCurrentTrack - Loading media (autoPlay: true)...");
+      await GoogleCastRemoteMediaClient.instance
+          .loadMedia(mediaInfo, autoPlay: true);
       print("PlayerProvider: castCurrentTrack - Media loaded successfully");
-      
+
       // Activate lyrics track if available
       if (_currentLyrics?.toWebVTT() != null) {
         await GoogleCastRemoteMediaClient.instance.setActiveTrackIDs([1]);
         print("PlayerProvider: castCurrentTrack - Lyrics track activated");
       }
-      
+
       // Explicitly call play to ensure it starts on some devices
       await GoogleCastRemoteMediaClient.instance.play();
       print("PlayerProvider: castCurrentTrack - Play command sent");
-      
+
       // Pause local player
       _player.pause();
-      
     } catch (e, stack) {
       print("Error casting track: $e");
       print(stack);
     }
   }
-  
+
   Future<void> stopCasting() async {
     try {
       await GoogleCastSessionManager.instance.endSessionAndStopCasting();
@@ -721,7 +876,7 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
 
   void _broadcastUpdate() {
     if (_roomId == null || !_isHost || currentTrack == null) return;
-    
+
     RoomService.updateRoom(
       _roomId!,
       track: currentTrack,
@@ -732,28 +887,54 @@ class PlayerProvider with ChangeNotifier, WidgetsBindingObserver {
 
   void _handleRoomUpdate(Map<String, dynamic> data) async {
     if (_isHost) return; // Host doesn't react to updates for now
-    
+
     final trackData = data['current_track_data'];
     final remoteTrack = Track.fromJson(Map<String, dynamic>.from(trackData));
     final remotePositionMs = data['position_ms'] as int;
     final remoteIsPlaying = data['is_playing'] as bool;
-    
+
     // 1. Check if track changed
     if (currentTrack?.id != remoteTrack.id) {
-       await playTrack(remoteTrack);
+      await playTrack(remoteTrack);
     }
-    
+
     // 2. Check play/pause status
     if (remoteIsPlaying != _player.playing) {
-      if (remoteIsPlaying) _player.play();
-      else _player.pause();
+      if (remoteIsPlaying)
+        _player.play();
+      else
+        _player.pause();
     }
-    
+
     // 3. Sync position if drift is > 2 seconds
     final drift = (remotePositionMs - _player.position.inMilliseconds).abs();
     if (drift > 2000) {
       _player.seek(Duration(milliseconds: remotePositionMs));
     }
   }
-}
 
+  void _broadcastRemoteState() {
+    if (isRemoteMode) return;
+    
+    _remoteService.broadcastState({
+      'isPlaying': _player.playing,
+      'position': _player.position.inMilliseconds,
+      'duration': _player.duration?.inMilliseconds ?? 0,
+      'volume': _player.volume,
+      'track': currentTrack?.toJson(),
+    });
+  }
+
+  void broadcastRemoteStateExplicitly() => _broadcastRemoteState();
+
+  // Remote Control Actions (to be called from UI when in remote mode)
+  void remotePlay() => _remoteService.sendCommand(_remoteService.targetDeviceId!, 'play');
+  void remotePause() => _remoteService.sendCommand(_remoteService.targetDeviceId!, 'pause');
+  void remoteNext() => _remoteService.sendCommand(_remoteService.targetDeviceId!, 'next');
+  void remotePrevious() => _remoteService.sendCommand(_remoteService.targetDeviceId!, 'previous');
+  void remoteSeek(Duration pos) => _remoteService.sendCommand(_remoteService.targetDeviceId!, 'seek', {'position': pos.inMilliseconds});
+  void remoteSetVolume(double vol) => _remoteService.sendCommand(_remoteService.targetDeviceId!, 'set_volume', {'volume': vol});
+  void remotePlayTrack(Track track) => _remoteService.remotePlayTrack(track);
+  void remotePlayPlaylist(List<Track> tracks, {int initialIndex = 0}) => 
+      _remoteService.remotePlayPlaylist(tracks, initialIndex: initialIndex);
+}

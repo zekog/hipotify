@@ -15,13 +15,25 @@ class DownloadService {
 
   static Future<bool> requestPermission() async {
     if (Platform.isAndroid) {
-      if (await Permission.manageExternalStorage.request().isGranted) {
-        return true;
+      try {
+        // Wear OS and some Android versions might not support the MANAGE_EXTERNAL_STORAGE intent,
+        // causing an ActivityNotFoundException.
+        if (await Permission.manageExternalStorage.request().isGranted) {
+          return true;
+        }
+      } catch (e) {
+        print("DownloadService: manageExternalStorage request failed (common on Wear OS): $e");
       }
+      
+      // Fallback to standard storage permissions
       if (await Permission.storage.request().isGranted) {
         return true;
       }
-      return false;
+      
+      // On Android 13+ (Wear OS 4), standard storage permission might return denied 
+      // even if we can write to some scoped locations. We return true and let 
+      // the actual file operation decide if it has access.
+      return true;
     }
     // iOS doesn't need explicit storage permission for app documents
     return true;
@@ -31,18 +43,46 @@ class DownloadService {
     Directory? directory;
     try {
       if (Platform.isAndroid) {
+        // 1. Try public Downloads folder
         directory = Directory('/storage/emulated/0/Download/Hipotify');
+        
+        bool canWrite = false;
+        try {
+          if (!await directory.exists()) {
+            await directory.create(recursive: true);
+          }
+          // Verify write access for Scoped Storage
+          final testFile = File("${directory.path}/.test_write");
+          await testFile.writeAsString("test");
+          await testFile.delete();
+          canWrite = true;
+        } catch (e) {
+          print("DownloadService: Public Download folder not accessible ($e). Falling back to app-specific storage.");
+          canWrite = false;
+        }
+
+        if (!canWrite) {
+          // 2. Fallback to app-specific external storage
+          final externalDir = await getExternalStorageDirectory();
+          if (externalDir != null) {
+            directory = Directory('${externalDir.path}/HipotifyDownloads');
+          } else {
+            // 3. Fallback to app documents
+            directory = await getApplicationDocumentsDirectory();
+          }
+        }
       } else {
         directory = await getApplicationDocumentsDirectory();
       }
-
+ 
       if (!await directory.exists()) {
         await directory.create(recursive: true);
       }
       return directory.path;
     } catch (e) {
       print("Error getting download path: $e");
-      return null;
+      final docs = await getApplicationDocumentsDirectory();
+      return docs.path;
     }
   }
 
@@ -126,14 +166,20 @@ class DownloadService {
   }
 
   static Future<String?> _getStreamUrlWithQuality(String trackId, String quality) async {
-    // We use ApiService.getStreamMetadata but we need to ensure it respects quality if possible.
-    // Since we haven't updated ApiService to take quality yet, we will rely on the fact that
-    // for now we might be getting the default quality.
-    // Ideally, we should update ApiService. 
-    // But to unblock, we will assume the API returns a valid URL.
-    // If the user selects FLAC, we hope the API returns FLAC (which it does by default for HiFi).
-    final metadata = await ApiService.getStreamMetadata(trackId); 
-    return metadata['url'];
+    // 1. Try requested quality
+    final metadata = await ApiService.getStreamMetadata(trackId, quality: quality); 
+    String? url = metadata['url'];
+    
+    // 2. DASH Fallback Logic:
+    // If the URL is a DASH manifest (data: URI), we can't download it as a single file.
+    // Fallback to HIGH (which is almost always a direct M4A/AAC link)
+    if (url != null && url.startsWith('data:')) {
+      print("DownloadService: Quality $quality returned DASH manifest. Falling back to HIGH for download.");
+      final fallbackMetadata = await ApiService.getStreamMetadata(trackId, quality: 'HIGH');
+      url = fallbackMetadata['url'];
+    }
+    
+    return url;
   }
 
   static Future<void> _tagFile(String filePath, Track track) async {
@@ -141,6 +187,19 @@ class DownloadService {
     try {
       print("Tagging file natively: $filePath");
       
+      final file = File(filePath);
+      if (!await file.exists()) {
+        print("Tagging Error: File not found at $filePath");
+        return;
+      }
+      
+      // Basic sanity check: ensure it's not an XML manifest
+      final head = await file.openRead(0, 100).first;
+      final headStr = String.fromCharCodes(head);
+      if (headStr.contains('<?xml') || headStr.contains('<MPD')) {
+        print("Tagging Error: Downloaded file appears to be an XML manifest, not audio. Skipping tagging.");
+        return;
+      }
       if (track.coverUrl.isNotEmpty) {
         // Download cover art to temp file
         final tempDir = await getTemporaryDirectory();

@@ -56,12 +56,11 @@ EdgeInsets getSnackBarMargin(BuildContext context) {
   );
 }
 
-/// Helper function to show a snackbar at the top of the screen with fade animations
 void showSnackBar(BuildContext context, String message, {Duration? duration}) {
-  // Use Overlay to display snackbar above everything
-  final overlay = navigatorKey.currentState?.overlay;
+  // Use absolute top-level Overlay to display snackbar above everything (including bottom sheets)
+  final overlay = topOverlayKey.currentState ?? navigatorKey.currentState?.overlay;
   if (overlay == null) {
-    // Fallback to context overlay if navigatorKey is not available
+    // Fallback to context overlay if globals are not available
     final contextOverlay = Overlay.of(context);
     _showTopSnackBar(contextOverlay, message, duration);
     return;

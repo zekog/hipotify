@@ -3,6 +3,8 @@ import '../services/hive_service.dart';
 import '../utils/snackbar_helper.dart';
 import 'account_screen.dart';
 import '../services/auth_service.dart';
+import 'settings/connect_settings_screen.dart';
+import 'settings/sync_settings_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -63,6 +65,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
               tileColor: Colors.white10,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
               onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AccountScreen())),
+            ),
+            const SizedBox(height: 10),
+            ListTile(
+              leading: const Icon(Icons.cast_connected),
+              title: const Text('Hipotify Connect'),
+              subtitle: const Text('Control other devices (Watch, PC, Phone)'),
+              trailing: const Icon(Icons.chevron_right),
+              tileColor: Colors.white10,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ConnectSettingsScreen())),
+            ),
+            const SizedBox(height: 10),
+            ListTile(
+              leading: const Icon(Icons.sync),
+              title: const Text('Super Sync'),
+              subtitle: const Text('Transfer login and library to another device'),
+              trailing: const Icon(Icons.chevron_right),
+              tileColor: Colors.white10,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SyncSettingsScreen())),
             ),
             const SizedBox(height: 30),
             const Text('API Configuration', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),

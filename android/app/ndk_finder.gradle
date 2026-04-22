@@ -1,0 +1,2 @@
+// Disable NDK auto-download
+android.ndkVersion = null

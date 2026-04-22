@@ -75,4 +75,10 @@ class AuthService {
     if (!SupabaseConfig.isConfigured) return const Stream.empty();
     return _client.auth.onAuthStateChange;
   }
+
+  static Future<void> recoverSession(String sessionString) async {
+    if (SupabaseConfig.isConfigured) {
+      await _client.auth.recoverSession(sessionString);
+    }
+  }
 }

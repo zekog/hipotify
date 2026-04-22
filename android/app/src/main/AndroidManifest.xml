@@ -16,6 +16,8 @@
     <!-- Android TV: Declare leanback support -->
     <uses-feature android:name="android.software.leanback" android:required="false" />
 
+    <uses-feature android:name="android.hardware.type.watch" />
+
     <application
         android:label="Hipotify"
         android:name="${applicationName}"

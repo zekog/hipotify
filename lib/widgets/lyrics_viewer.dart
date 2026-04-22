@@ -11,6 +11,9 @@ class LyricsViewer extends StatefulWidget {
   final TextAlign textAlign;
   final TextStyle? textStyle;
   final TextStyle? activeTextStyle;
+  final bool shrinkWrap;
+  final ScrollPhysics? physics;
+  final double? bottomPadding;
 
   const LyricsViewer({
     super.key,
@@ -20,6 +23,9 @@ class LyricsViewer extends StatefulWidget {
     this.textAlign = TextAlign.center,
     this.textStyle,
     this.activeTextStyle,
+    this.shrinkWrap = false,
+    this.physics = const BouncingScrollPhysics(),
+    this.bottomPadding,
   });
 
   @override
@@ -164,10 +170,14 @@ class _LyricsViewerState extends State<LyricsViewer> {
             return false;
           },
           child: ListView.builder(
-            controller: _scrollController,
-            padding: EdgeInsets.symmetric(vertical: MediaQuery.of(context).size.height * 0.45),
+            controller: widget.shrinkWrap ? null : _scrollController,
+            shrinkWrap: widget.shrinkWrap,
+            physics: widget.physics,
+            padding: EdgeInsets.only(
+              top: widget.shrinkWrap ? 20 : MediaQuery.of(context).size.height * 0.45,
+              bottom: widget.bottomPadding ?? (widget.shrinkWrap ? 20 : MediaQuery.of(context).size.height * 0.45),
+            ),
             itemCount: _lines.length,
-            physics: const BouncingScrollPhysics(),
             cacheExtent: 1000, // Keep more items in tree for ensureVisible
             itemBuilder: (context, index) {
               final line = _lines[index];
@@ -192,8 +202,8 @@ class _LyricsViewerState extends State<LyricsViewer> {
                     duration: const Duration(milliseconds: 500),
                     curve: Curves.easeOutCubic,
                     padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 32),
-                    transform: Matrix4.identity()..scale(isCurrent ? 1.08 : 1.0),
-                    transformAlignment: Alignment.centerLeft,
+                    transform: Matrix4.identity()..scale(isCurrent ? 1.05 : 1.0),
+                    transformAlignment: Alignment.center,
                     child: Text(
                       line.text,
                       textAlign: widget.textAlign,
@@ -224,20 +234,23 @@ class _LyricsViewerState extends State<LyricsViewer> {
         ),
         if (_isUserScrolling)
           Positioned(
-            bottom: 40,
-            right: 30,
-            child: FadeInUp(
-              duration: const Duration(milliseconds: 400),
-              child: FloatingActionButton(
-                onPressed: () {
-                  setState(() {
-                    _isUserScrolling = false;
-                  });
-                  _scrollToCurrentLine();
-                },
-                backgroundColor: Colors.white.withOpacity(0.15),
-                elevation: 0,
-                child: const Icon(Icons.keyboard_arrow_down, color: Colors.white, size: 30),
+            bottom: 20,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: FadeInUp(
+                duration: const Duration(milliseconds: 400),
+                child: FloatingActionButton.small(
+                  onPressed: () {
+                    setState(() {
+                      _isUserScrolling = false;
+                    });
+                    _scrollToCurrentLine();
+                  },
+                  backgroundColor: Colors.white.withOpacity(0.2),
+                  elevation: 0,
+                  child: const Icon(Icons.sync, color: Colors.white, size: 20),
+                ),
               ),
             ),
           ),
@@ -246,18 +259,27 @@ class _LyricsViewerState extends State<LyricsViewer> {
   }
 
   Widget _buildPlainLyrics() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(40),
+    final textWidget = Container(
+      alignment: Alignment.center,
+      padding: EdgeInsets.all(widget.shrinkWrap ? 16 : 40),
       child: Text(
         widget.lyrics.lyrics ?? "No lyrics available",
         textAlign: widget.textAlign,
-        style: TextStyle(
+        style: widget.textStyle ?? TextStyle(
           color: Colors.white.withOpacity(0.9),
           fontSize: 24,
           fontWeight: FontWeight.w600,
           height: 1.6,
         ),
       ),
+    );
+
+    if (widget.shrinkWrap) return textWidget;
+
+    return SingleChildScrollView(
+      controller: _scrollController,
+      physics: widget.physics,
+      child: textWidget,
     );
   }
 }

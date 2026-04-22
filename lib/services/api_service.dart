@@ -741,7 +741,6 @@ class ApiService {
       print("API GetLyrics: $uri");
       final response = await _getWithRetry(uri);
       print("API GetLyrics Status: ${response.statusCode}");
-      print("API GetLyrics Body: ${response.body}");
       
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -753,7 +752,47 @@ class ApiService {
         }
         
         if (lyricsData is Map<String, dynamic>) {
-          return Lyrics.fromJson(lyricsData, trackId);
+          // Try to extract subtitles from multiple possible locations
+          String? subtitlesStr = lyricsData['subtitles'];
+          
+          // TIDAL sometimes returns subtitles as a JSON-encoded array of objects
+          // like [{"text":"...","milliseconds":1234}, ...]
+          if (subtitlesStr != null && subtitlesStr.trim().startsWith('[')) {
+            try {
+              final subtitlesList = jsonDecode(subtitlesStr) as List;
+              final lrcLines = subtitlesList.map((item) {
+                if (item is Map) {
+                  final ms = item['milliseconds'] ?? item['startTimeMs'] ?? 0;
+                  final text = item['text'] ?? item['lyrics'] ?? '';
+                  if (text.toString().trim().isEmpty) return '';
+                  final duration = Duration(milliseconds: (ms is int) ? ms : int.tryParse(ms.toString()) ?? 0);
+                  final minutes = duration.inMinutes;
+                  final seconds = duration.inSeconds % 60;
+                  final centis = (duration.inMilliseconds % 1000) ~/ 10;
+                  return '[${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}.${centis.toString().padLeft(2, '0')}]${text.toString().trim()}';
+                }
+                return '';
+              }).where((l) => l.isNotEmpty).join('\n');
+              
+              if (lrcLines.isNotEmpty) {
+                subtitlesStr = lrcLines;
+                print("API GetLyrics: Parsed JSON subtitles into LRC format (${lrcLines.split('\n').length} lines)");
+              }
+            } catch (e) {
+              print("API GetLyrics: Failed to parse JSON subtitles: $e");
+            }
+          }
+          
+          print("API GetLyrics: lyrics=${lyricsData['lyrics'] != null ? 'present (${(lyricsData['lyrics'] as String).length} chars)' : 'null'}");
+          print("API GetLyrics: subtitles=${subtitlesStr != null ? 'present (${subtitlesStr.length} chars)' : 'null'}");
+          
+          // Build Lyrics with the possibly-transformed subtitles
+          return Lyrics(
+            trackId: trackId,
+            lyrics: lyricsData['lyrics'],
+            subtitles: subtitlesStr,
+            lyricsProvider: lyricsData['lyricsProvider'],
+          );
         } else {
           print("API GetLyrics: Unexpected data format: $lyricsData");
         }

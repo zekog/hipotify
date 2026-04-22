@@ -46,18 +46,25 @@ class _ArtistScreenState extends State<ArtistScreen> {
       
       String? bio;
       List<String> validTopTracks = [];
+      List<Track> tracks = [];
 
       try {
-        if (artist.name.isNotEmpty) {
-          bio = await InfoService.getArtistBio(artist.name);
-          validTopTracks = await InfoService.getTopTracks(artist.name);
-        }
-      } catch (e) {
-        print("Error fetching External Info data: $e");
-      }
+        final results = await Future.wait([
+          artist.name.isNotEmpty 
+            ? InfoService.getArtistBio(artist.name).catchError((_) => null) 
+            : Future.value(null),
+          artist.name.isNotEmpty 
+            ? InfoService.getTopTracks(artist.name).catchError((_) => <String>[]) 
+            : Future.value(<String>[]),
+          ApiService.getArtistTopTracks(widget.artistId).catchError((_) => <Track>[]),
+        ]);
 
-      // Fetch tracks from internal API
-      var tracks = await ApiService.getArtistTopTracks(widget.artistId);
+        bio = results[0] as String?;
+        validTopTracks = results[1] as List<String>;
+        tracks = results[2] as List<Track>;
+      } catch (e) {
+        print("Error fetching parallel data: $e");
+      }
       
       // Deduplicate tracks
       final seenTitles = <String>{};

@@ -8,7 +8,13 @@ plugins {
 android {
     namespace = "com.example.hipotify"
     compileSdk = 36
-    ndkVersion = flutter.ndkVersion
+    // Do not use NDK - disable auto-download
+    // ndkVersion = flutter.ndkVersion
+
+    lint {
+        disable += "OldTargetApi"
+        disable += "ExpiredTargetSdkVersion"
+    }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
