@@ -7,14 +7,16 @@ Hipotify is a free, open-source, and ad-free music player for Android based on T
 - 💿 **Lossless Audio**: Support for FLAC and Hi-Res sound quality.
 - 🎧 **Huge Catalogue**: Powered by the full TIDAL library and HiFi APIs.
 - ☁️ **Cloud Sync & Social**: Sync likes and playlists across devices and discover community playlists via **Playlist Net**.
+- 📡 **Super Sync P2P**: Seamless cross-device playback control and syncing over local Wi-Fi.
+- ⌚ **Wear OS Support**: Complete standalone smartwatch experience with rotary crown control.
 - 🔎 **Advanced Search**: Intelligent scoring algorithm to find the most accurate tracks and artists.
-- 🎨 **Artist Profiles**: Organized discographies with clear separation between Albums and Singles & EPs.
-- 🎭 **Dynamic Themes**: Premium glassmorphism aesthetic with Material You (Android 12+), Catppuccin palettes, and AMOLED black mode.
+- 🎨 **Dynamic Themes**: Premium aesthetic with Monet Engine (Material You), Catppuccin palettes, and AMOLED black.
 - 🎵 **Synced Lyrics**: Premium lyrics experience with tap-to-seek functionality.
 - 💾 **Smart Downloads**: Export songs as lossless .flac files with full metadata (Android/Linux).
-- 📡 **Chromecast**: Stream to your TV with synchronized lyrics (Android only).
+- 📻 **External EQ**: Full support for Viper4FX, Wavelet, and other system equalizers.
+- 📺 **Chromecast**: Stream to your TV with synchronized lyrics (Android only).
 - 📊 **Stats for Nerds**: Real-time technical details (bit depth, sample rate, etc.).
-- 🐧 **Linux Support**: Support for Linux with AppImage builds.
+- 📱 **Multi-Platform**: Native automated builds via CI/CD for Android (`.apk`), iOS (`.ipa`), and Linux (`.AppImage`).
 
 ## ⚙️ How It Works
 Hipotify acts as a mobile frontend that fetches lossless audio directly from TIDAL.
