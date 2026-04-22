@@ -40,7 +40,7 @@ jobs:
           echo "Verifying patch in Pods-Runner-frameworks.sh:"
           grep -C 2 "readlink -f" ios/Pods/Target\ Support\ Files/Pods-Runner/Pods-Runner-frameworks.sh || echo "Patch not found in Pods-Runner-frameworks.sh"
           
-          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -configuration Release -sdk iphoneos CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" PROVISIONING_PROFILE_SPECIFIER="" -quiet
+          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -configuration Release -sdk iphoneos CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" PROVISIONING_PROFILE_SPECIFIER=""
         
       - name: Package IPA
         run: |
