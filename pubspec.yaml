@@ -48,3 +48,6 @@ flutter:
   uses-material-design: true
   assets:
     - assets/silence.mp3
+
+dependency_overrides:
+  device_info_plus: ^13.1.0
