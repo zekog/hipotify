@@ -1,3 +1,6 @@
+# NOTE: Project is archived because there are no public hifi-api instances left, you can however fork this repo and make your own instance [with this](https://github.com/uimaxbai/hifi-api)
+
+
 # 🎶 Hipotify
 
 Hipotify is a free, open-source, and ad-free music player for Android based on Tidal with Hi-Res sound. It has a clean interface similar to Spotify, built with Flutter for a premium native experience.
